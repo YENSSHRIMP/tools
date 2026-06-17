@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>白蝦採購工具箱</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Expanded:wght@600;700;800&family=Noto+Sans+TC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ocean-deep:#0B4F6C;
+  --ocean-teal:#01949A;
+  --ocean-foam:#5FC9BF;
+  --sand:#FBF5E6;
+  --sand-dark:#F2E9D2;
+  --coral:#FF6B5B;
+  --coral-dark:#E05445;
+  --ink:#0A2E36;
+  --ink-soft:#3D5A60;
+  --white:#FFFFFF;
+  --line:#D8E6E2;
+  --shadow:0 4px 14px rgba(11,79,108,0.10);
+  --shadow-lift:0 10px 28px rgba(11,79,108,0.16);
+  --radius:14px;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:'Noto Sans TC',sans-serif;
+  background:var(--sand);
+  color:var(--ink);
+  min-height:100vh;
+  background-image:
+    radial-gradient(ellipse 800px 400px at 10% -5%, rgba(95,201,191,0.18), transparent),
+    radial-gradient(ellipse 600px 500px at 95% 10%, rgba(1,148,154,0.10), transparent);
+}
+
+.shell{
+  display:flex;
+  min-height:100vh;
+}
+
+/* ---------- Sidebar (desktop) ---------- */
+.sidebar{
+  width:248px;
+  flex-shrink:0;
+  background:linear-gradient(180deg,var(--ocean-deep),#073A50);
+  padding:24px 16px;
+  display:flex;
+  flex-direction:column;
+  gap:22px;
+  position:sticky;
+  top:0;
+  height:100vh;
+  overflow-y:auto;
+}
+.sb-brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:0 6px;
+}
+.sb-brand-mark{
+  width:42px;height:42px;
+  border-radius:11px;
+  background:rgba(255,255,255,0.12);
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.sb-brand-mark svg{width:24px;height:24px;}
+.sb-brand-text h1{
+  font-family:'Archivo Expanded',sans-serif;
+  font-weight:800;
+  font-size:1.05rem;
+  color:var(--white);
+  margin:0;
+  line-height:1.25;
+}
+.sb-brand-text p{
+  margin:2px 0 0;
+  font-size:0.66rem;
+  color:rgba(255,255,255,0.55);
+  letter-spacing:0.04em;
+}
+
+.sb-fx-badge{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  background:rgba(255,255,255,0.08);
+  border-radius:10px;
+  padding:9px 12px;
+  font-size:0.72rem;
+  color:rgba(255,255,255,0.85);
+  font-family:'JetBrains Mono',monospace;
+}
+.live-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:#2ecc71;
+  box-shadow:0 0 0 0 rgba(46,204,113,0.6);
+  animation:pulse 2s infinite;
+  flex-shrink:0;
+}
+.live-dot.off{background:#cfcfcf;animation:none;}
+@keyframes pulse{
+  0%{box-shadow:0 0 0 0 rgba(46,204,113,0.5);}
+  70%{box-shadow:0 0 0 6px rgba(46,204,113,0);}
+  100%{box-shadow:0 0 0 0 rgba(46,204,113,0);}
+}
+
+.sb-nav{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+.sb-tab-btn{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:transparent;
+  border:none;
+  border-radius:10px;
+  padding:11px 12px;
+  font-family:'Noto Sans TC',sans-serif;
+  font-weight:600;
+  font-size:0.88rem;
+  color:rgba(255,255,255,0.72);
+  cursor:pointer;
+  text-align:left;
+  transition:all .15s ease;
+}
+.sb-tab-btn .tab-num{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.68rem;
+  color:rgba(255,255,255,0.55);
+  background:rgba(255,255,255,0.08);
+  border-radius:5px;
+  padding:1px 6px;
+  flex-shrink:0;
+}
+.sb-tab-btn:hover{
+  background:rgba(255,255,255,0.06);
+  color:var(--white);
+}
+.sb-tab-btn.active{
+  background:rgba(255,255,255,0.14);
+  color:var(--white);
+  box-shadow:inset 3px 0 0 var(--coral);
+}
+.sb-tab-btn.active .tab-num{
+  background:var(--coral);
+  color:var(--white);
+}
+
+.sb-footer-note{
+  margin-top:auto;
+  font-size:0.66rem;
+  color:rgba(255,255,255,0.4);
+  padding:0 6px;
+  line-height:1.5;
+}
+
+/* ---------- Mobile top bar ---------- */
+.mobile-topbar{
+  display:none;
+}
+
+/* ---------- Main content ---------- */
+.main-wrap{
+  flex:1;
+  min-width:0;
+  padding:28px 32px 60px;
+  max-width:980px;
+}
+
+@media(max-width:880px){
+  .shell{flex-direction:column;}
+  .sidebar{display:none;}
+  .mobile-topbar{
+    display:block;
+    position:sticky;
+    top:0;
+    z-index:20;
+    background:linear-gradient(180deg,var(--ocean-deep),#0B4F6C);
+    padding:14px 16px 10px;
+  }
+  .mt-brand{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    margin-bottom:10px;
+  }
+  .mt-brand-left{display:flex;align-items:center;gap:10px;}
+  .mt-brand-mark{
+    width:34px;height:34px;border-radius:9px;
+    background:rgba(255,255,255,0.12);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .mt-brand-mark svg{width:20px;height:20px;}
+  .mt-brand-text h1{
+    font-family:'Archivo Expanded',sans-serif;
+    font-weight:800;
+    font-size:0.95rem;
+    color:var(--white);
+    margin:0;
+  }
+  .mt-fx-badge{
+    display:flex;align-items:center;gap:6px;
+    background:rgba(255,255,255,0.1);
+    border-radius:999px;
+    padding:5px 10px;
+    font-size:0.65rem;
+    color:rgba(255,255,255,0.85);
+    font-family:'JetBrains Mono',monospace;
+    white-space:nowrap;
+  }
+  .mt-tabs{
+    display:flex;
+    gap:6px;
+    overflow-x:auto;
+    padding-bottom:8px;
+    scrollbar-width:thin;
+  }
+  .mt-tab-btn{
+    flex:0 0 auto;
+    white-space:nowrap;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    background:rgba(255,255,255,0.08);
+    border:none;
+    border-radius:8px;
+    padding:8px 12px;
+    font-family:'Noto Sans TC',sans-serif;
+    font-weight:600;
+    font-size:0.78rem;
+    color:rgba(255,255,255,0.75);
+    cursor:pointer;
+  }
+  .mt-tab-btn .tab-num{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.65rem;
+    opacity:0.7;
+  }
+  .mt-tab-btn.active{
+    background:var(--coral);
+    color:var(--white);
+  }
+  .main-wrap{
+    padding:20px 16px 50px;
+    max-width:100%;
+  }
+}
+
+/* ---------- Panels ---------- */
+.panel{display:none;animation:fadeIn .25s ease;}
+.panel.active{display:block;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+
+.panel-head{margin-bottom:18px;}
+.panel-head h2{
+  font-family:'Archivo Expanded',sans-serif;
+  font-weight:700;
+  font-size:1.35rem;
+  color:var(--ocean-deep);
+  margin:0 0 4px;
+}
+.panel-head p{
+  margin:0;
+  color:var(--ink-soft);
+  font-size:0.92rem;
+}
+
+.card{
+  background:var(--white);
+  border-radius:var(--radius);
+  border:1px solid var(--line);
+  box-shadow:var(--shadow);
+  padding:22px;
+  margin-bottom:20px;
+}
+.card-title{
+  font-weight:700;
+  font-size:1rem;
+  color:var(--ocean-deep);
+  margin:0 0 14px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.card-title .dot{width:7px;height:7px;border-radius:50%;background:var(--coral);}
+
+/* formula tag */
+.formula-tag{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.82rem;
+  color:var(--ocean-deep);
+  background:var(--sand-dark);
+  border:1.5px dashed var(--ocean-foam);
+  border-radius:8px;
+  padding:10px 14px;
+  margin-bottom:18px;
+  line-height:1.6;
+  overflow-x:auto;
+}
+.formula-tag b{color:var(--coral-dark);}
+.formula-tag .fname{
+  display:inline-block;
+  font-family:'Noto Sans TC',sans-serif;
+  font-weight:700;
+  font-size:0.72rem;
+  color:var(--white);
+  background:var(--ocean-teal);
+  border-radius:5px;
+  padding:1px 8px;
+  margin-bottom:6px;
+}
+
+.grid{display:grid;gap:16px;}
+.grid-2{grid-template-columns:1fr 1fr;}
+.grid-3{grid-template-columns:1fr 1fr 1fr;}
+@media(max-width:680px){
+  .grid-2,.grid-3{grid-template-columns:1fr;}
+}
+
+.field{display:flex;flex-direction:column;gap:6px;}
+.field label{
+  font-size:0.82rem;
+  font-weight:600;
+  color:var(--ink-soft);
+}
+.field .hint{font-size:0.72rem;color:#8AA0A4;font-weight:400;}
+.field input[type=number],
+.field input[type=text],
+.field select{
+  font-family:'JetBrains Mono',monospace;
+  font-size:0.95rem;
+  padding:10px 12px;
+  border:1.5px solid var(--line);
+  border-radius:8px;
+  background:var(--sand);
+  color:var(--ink);
+  transition:border-color .15s;
+  width:100%;
+}
+.field input:focus,.field select:focus{
+  outline:none;
+  border-color:var(--ocean-teal);
+  background:var(--white);
+}
+.radio-row{display:flex;gap:10px;flex-wrap:wrap;}
+.radio-chip{
+  flex:1;
+  text-align:center;
+  border:1.5px solid var(--line);
+  border-radius:8px;
+  padding:9px 10px;
+  font-size:0.85rem;
+  font-weight:600;
+  color:var(--ink-soft);
+  cursor:pointer;
+  background:var(--sand);
+  transition:all .15s;
+}
+.radio-chip input{display:none;}
+.radio-chip.checked{
+  background:var(--ocean-teal);
+  border-color:var(--ocean-teal);
+  color:var(--white);
+}
+
+.result-box{
+  margin-top:6px;
+  background:linear-gradient(135deg,rgba(1,148,154,0.07),rgba(95,201,191,0.12));
+  border:1px solid var(--ocean-foam);
+  border-radius:10px;
+  padding:16px 18px;
+}
+.result-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  padding:6px 0;
+  border-bottom:1px dashed rgba(11,79,108,0.12);
+}
+.result-row:last-child{border-bottom:none;}
+.result-row .rlabel{font-size:0.84rem;color:var(--ink-soft);}
+.result-row .rvalue{
+  font-family:'JetBrains Mono',monospace;
+  font-weight:700;
+  font-size:1.05rem;
+  color:var(--ocean-deep);
+}
+.result-row .rvalue.big{font-size:1.4rem;color:var(--coral-dark);}
+.result-row .rvalue.muted{font-size:0.9rem;color:var(--ink-soft);font-weight:500;}
+
+.note-line{
+  font-size:0.76rem;
+  color:#8AA0A4;
+  margin-top:10px;
+}
+
+button.calc-btn{
+  font-family:'Noto Sans TC',sans-serif;
+  font-weight:700;
+  font-size:0.9rem;
+  color:var(--white);
+  background:linear-gradient(135deg,var(--coral),var(--coral-dark));
+  border:none;
+  border-radius:9px;
+  padding:11px 20px;
+  cursor:pointer;
+  box-shadow:0 4px 12px rgba(255,107,91,0.32);
+  transition:transform .15s, box-shadow .15s;
+}
+button.calc-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(255,107,91,0.4);}
+button.calc-btn:active{transform:translateY(0);}
+button.ghost-btn{
+  font-family:'Noto Sans TC',sans-serif;
+  font-weight:600;
+  font-size:0.84rem;
+  color:var(--ocean-teal);
+  background:transparent;
+  border:1.5px solid var(--ocean-foam);
+  border-radius:9px;
+  padding:9px 16px;
+  cursor:pointer;
+  transition:background .15s;
+}
+button.ghost-btn:hover{background:rgba(95,201,191,0.12);}
+
+/* table */
+table.spec-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:0.86rem;
+}
+table.spec-table th{
+  text-align:left;
+  font-size:0.74rem;
+  color:var(--white);
+  background:var(--ocean-deep);
+  padding:9px 10px;
+  position:sticky;top:0;
+}
+table.spec-table th:first-child{border-radius:8px 0 0 0;}
+table.spec-table th:last-child{border-radius:0 8px 0 0;}
+table.spec-table td{
+  padding:9px 10px;
+  border-bottom:1px solid var(--line);
+  font-family:'JetBrains Mono',monospace;
+}
+table.spec-table tr:hover td{background:rgba(95,201,191,0.08);}
+table.spec-table td.label-cell{
+  font-family:'Noto Sans TC',sans-serif;
+  font-weight:700;
+  color:var(--ocean-deep);
+}
+.table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--line);}
+
+.tag-strip{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+.tag{
+  font-size:0.72rem;
+  font-family:'JetBrains Mono',monospace;
+  background:var(--sand-dark);
+  color:var(--ink-soft);
+  border-radius:5px;
+  padding:3px 8px;
+}
+
+.footer-note{
+  text-align:center;
+  font-size:0.76rem;
+  color:#8AA0A4;
+  margin-top:30px;
+}
+
+.two-col-tools{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+@media(max-width:780px){.two-col-tools{grid-template-columns:1fr;}}
+
+.sub-tabs{display:flex;gap:8px;margin-bottom:16px;}
+.sub-tab-btn{
+  flex:1;
+  border:1.5px solid var(--line);
+  background:var(--sand);
+  border-radius:9px;
+  padding:9px;
+  font-size:0.82rem;
+  font-weight:600;
+  color:var(--ink-soft);
+  cursor:pointer;
+}
+.sub-tab-btn.active{
+  background:var(--ocean-teal);
+  border-color:var(--ocean-teal);
+  color:var(--white);
+}
+.sub-panel{display:none;}
+.sub-panel.active{display:block;}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- 桌面版左側選單 -->
+  <aside class="sidebar">
+    <div class="sb-brand">
+      <div class="sb-brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 12c2-4 6-7 11-7 3 0 5.5 1.2 7 3-1 .3-2 1-2 2.5 0 1 .6 1.8 1.5 2.2-1.2 1.7-3.6 3-6.5 3-2 3-5.5 4.3-9 3.3 1.5-1 2.5-2.3 2.8-3.8C5.8 14.8 4 13.6 3 12Z" stroke="white" stroke-width="1.4" stroke-linejoin="round"/>
+          <circle cx="16.3" cy="9.4" r="0.9" fill="white"/>
+        </svg>
+      </div>
+      <div class="sb-brand-text">
+        <h1>白蝦採購工具箱</h1>
+        <p>PRAWN TOOLKIT</p>
+      </div>
+    </div>
+
+    <div class="sb-fx-badge" id="fxBadge">
+      <span class="live-dot off" id="fxDot"></span>
+      <span id="fxBadgeText">匯率載入中…</span>
+    </div>
+
+    <nav class="sb-nav" id="sbNav"></nav>
+
+    <p class="sb-footer-note">公式皆於各計算器上方標示，數值僅供採購參考，實際交易請依供應商報價與報關資料核實。</p>
+  </aside>
+
+  <!-- 手機版頂部選單 -->
+  <div class="mobile-topbar">
+    <div class="mt-brand">
+      <div class="mt-brand-left">
+        <div class="mt-brand-mark">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 12c2-4 6-7 11-7 3 0 5.5 1.2 7 3-1 .3-2 1-2 2.5 0 1 .6 1.8 1.5 2.2-1.2 1.7-3.6 3-6.5 3-2 3-5.5 4.3-9 3.3 1.5-1 2.5-2.3 2.8-3.8C5.8 14.8 4 13.6 3 12Z" stroke="white" stroke-width="1.4" stroke-linejoin="round"/>
+            <circle cx="16.3" cy="9.4" r="0.9" fill="white"/>
+          </svg>
+        </div>
+        <div class="mt-brand-text"><h1>白蝦採購工具箱</h1></div>
+      </div>
+      <div class="mt-fx-badge" id="fxBadgeMobile">
+        <span class="live-dot off" id="fxDotMobile"></span>
+        <span id="fxBadgeTextMobile">載入中…</span>
+      </div>
+    </div>
+    <nav class="mt-tabs" id="mtNav"></nav>
+  </div>
+
+  <main class="main-wrap" id="panelHost"></main>
+
+</div>
+
+<script>
+/* =========================================================
+   白蝦採購工具箱 — app.js
+   六個分頁：1.毛利率 2.匯率換算 3.百分比 4.規格換算 5.採購成本+毛利 6.包冰率
+   ========================================================= */
+
+const TABS = [
+  { id:"margin",   num:"01", label:"毛利率計算器" },
+  { id:"fx",       num:"02", label:"匯率換算器" },
+  { id:"percent",  num:"03", label:"百分比計算器" },
+  { id:"spec",     num:"04", label:"白蝦規格換算" },
+  { id:"cost",     num:"05", label:"採購成本＋毛利" },
+  { id:"ice",      num:"06", label:"包冰率計算器" },
+];
+
+let state = {
+  fxRates: null,      // { base: 'USD', rates: {TWD: xx, ...}, ts: ... }
+  fxLoading: false,
+};
+
+/* ---------------- Tab / Panel scaffold ---------------- */
+function buildTabs(){
+  const sbNav = document.getElementById("sbNav");
+  const mtNav = document.getElementById("mtNav");
+
+  sbNav.innerHTML = TABS.map((t,i)=>`
+    <button class="sb-tab-btn${i===0?' active':''}" data-tab="${t.id}">
+      <span class="tab-num">${t.num}</span>${t.label}
+    </button>
+  `).join("");
+
+  mtNav.innerHTML = TABS.map((t,i)=>`
+    <button class="mt-tab-btn${i===0?' active':''}" data-tab="${t.id}">
+      <span class="tab-num">${t.num}</span>${t.label}
+    </button>
+  `).join("");
+
+  [...sbNav.querySelectorAll(".sb-tab-btn"), ...mtNav.querySelectorAll(".mt-tab-btn")].forEach(btn=>{
+    btn.addEventListener("click", ()=> switchTab(btn.dataset.tab));
+  });
+}
+
+function switchTab(id){
+  document.querySelectorAll(".sb-tab-btn, .mt-tab-btn").forEach(b=>{
+    b.classList.toggle("active", b.dataset.tab===id);
+  });
+  document.querySelectorAll(".panel").forEach(p=>{
+    p.classList.toggle("active", p.id === "panel-"+id);
+  });
+  window.scrollTo({top:0, behavior:"instant" in window ? "instant" : "auto"});
+}
+
+function buildPanels(){
+  const host = document.getElementById("panelHost");
+  host.innerHTML = `
+    <section class="panel active" id="panel-margin">${marginPanelHTML()}</section>
+    <section class="panel" id="panel-fx">${fxPanelHTML()}</section>
+    <section class="panel" id="panel-percent">${percentPanelHTML()}</section>
+    <section class="panel" id="panel-spec">${specPanelHTML()}</section>
+    <section class="panel" id="panel-cost">${costPanelHTML()}</section>
+    <section class="panel" id="panel-ice">${icePanelHTML()}</section>
+  `;
+}
+
+/* ---------------- helpers ---------------- */
+function fmt(num, digits=2){
+  if(num===null || num===undefined || isNaN(num)) return "—";
+  return Number(num).toLocaleString("zh-TW", { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+}
+function fmtFull(num, digits=4){
+  if(num===null||num===undefined||isNaN(num)) return "—";
+  return Number(num).toFixed(digits);
+}
+function $(sel, scope=document){ return scope.querySelector(sel); }
+function $all(sel, scope=document){ return [...scope.querySelectorAll(sel)]; }
+
+/* =========================================================
+   1. 毛利率計算器
+   毛利率(%) = (售價－成本) ÷ 售價 × 100%
+   ========================================================= */
+function marginPanelHTML(){
+  return `
+    <div class="panel-head">
+      <h2>毛利率計算器</h2>
+      <p>輸入售價與成本，立即算出毛利率與毛利金額。</p>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>毛利率 Gross Margin</div>
+      <div class="formula-tag">
+        <span class="fname">公式</span><br>
+        毛利率 (%) ＝ <b>(售價－成本) ÷ 售價</b> × 100%
+      </div>
+      <div class="grid grid-2">
+        <div class="field">
+          <label>售價（每單位）</label>
+          <input type="number" id="m_price" placeholder="例如 250" step="0.01">
+        </div>
+        <div class="field">
+          <label>成本（每單位）</label>
+          <input type="number" id="m_cost" placeholder="例如 180" step="0.01">
+        </div>
+      </div>
+      <div class="result-box" id="m_result">
+        <div class="result-row"><span class="rlabel">毛利金額（售價－成本）</span><span class="rvalue" id="m_profit">—</span></div>
+        <div class="result-row"><span class="rlabel">毛利率</span><span class="rvalue big" id="m_rate">—</span></div>
+        <div class="result-row"><span class="rlabel">成本占售價比例</span><span class="rvalue muted" id="m_costratio">—</span></div>
+      </div>
+      <p class="note-line">提示：若已知「成本」與「目標毛利率」，也可反推應訂的售價，見下方輔助計算。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>反推：已知成本＋目標毛利率 → 應訂售價</div>
+      <div class="formula-tag">
+        <span class="fname">公式</span><br>
+        售價 ＝ 成本 ÷ (1－目標毛利率)
+      </div>
+      <div class="grid grid-2">
+        <div class="field">
+          <label>成本（每單位）</label>
+          <input type="number" id="m2_cost" placeholder="例如 180" step="0.01">
+        </div>
+        <div class="field">
+          <label>目標毛利率（%）</label>
+          <input type="number" id="m2_target" placeholder="例如 30" step="0.1">
+        </div>
+      </div>
+      <div class="result-box">
+        <div class="result-row"><span class="rlabel">建議售價</span><span class="rvalue big" id="m2_price">—</span></div>
+        <div class="result-row"><span class="rlabel">毛利金額</span><span class="rvalue" id="m2_profit">—</span></div>
+      </div>
+    </div>
+  `;
+}
+
+function wireMarginPanel(){
+  const price = $("#m_price"), cost = $("#m_cost");
+  function calc(){
+    const p = parseFloat(price.value), c = parseFloat(cost.value);
+    if(isNaN(p) || isNaN(c) || p===0){
+      $("#m_profit").textContent="—"; $("#m_rate").textContent="—"; $("#m_costratio").textContent="—";
+      return;
+    }
+    const profit = p - c;
+    const rate = (profit/p)*100;
+    const costRatio = (c/p)*100;
+    $("#m_profit").textContent = fmt(profit) + " 元";
+    $("#m_rate").textContent = fmt(rate) + " %";
+    $("#m_costratio").textContent = fmt(costRatio) + " %";
+  }
+  [price,cost].forEach(el=>el.addEventListener("input", calc));
+
+  const c2 = $("#m2_cost"), t2 = $("#m2_target");
+  function calc2(){
+    const cost = parseFloat(c2.value), target = parseFloat(t2.value);
+    if(isNaN(cost) || isNaN(target) || target>=100){
+      $("#m2_price").textContent="—"; $("#m2_profit").textContent="—";
+      return;
+    }
+    const price = cost / (1 - target/100);
+    $("#m2_price").textContent = fmt(price) + " 元";
+    $("#m2_profit").textContent = fmt(price-cost) + " 元";
+  }
+  [c2,t2].forEach(el=>el.addEventListener("input", calc2));
+}
+
+/* =========================================================
+   2. 匯率換算器（即時匯率 API）
+   ========================================================= */
+const FX_API = "https://api.frankfurter.app/latest"; // 免費、無需 key
+const FX_COMMON = ["TWD","USD","JPY","CNY","EUR","HKD","KRW","THB","VND","GBP","AUD"];
+
+function fxPanelHTML(){
+  const opts = FX_COMMON.map(c=>`<option value="${c}">${c}</option>`).join("");
+  return `
+    <div class="panel-head">
+      <h2>匯率換算器</h2>
+      <p>即時抓取各幣別匯率，支援雙向換算與快速採購幣別。</p>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>即時匯率換算</div>
+      <div class="formula-tag">
+        <span class="fname">公式</span><br>
+        換算金額 ＝ 來源金額 × (目標幣匯率 ÷ 來源幣匯率)　<span style="color:#8AA0A4">（皆以美元為中介換算）</span>
+      </div>
+      <div class="grid grid-3">
+        <div class="field">
+          <label>金額</label>
+          <input type="number" id="fx_amount" value="1000" step="0.01">
+        </div>
+        <div class="field">
+          <label>從（來源幣別）</label>
+          <select id="fx_from">${opts}</select>
+        </div>
+        <div class="field">
+          <label>換成（目標幣別）</label>
+          <select id="fx_to">${opts}</select>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
+        <button class="calc-btn" id="fx_swap">⇄ 互換幣別</button>
+        <button class="ghost-btn" id="fx_refresh">重新抓取即時匯率</button>
+      </div>
+      <div class="result-box" style="margin-top:16px;">
+        <div class="result-row"><span class="rlabel" id="fx_result_label">換算結果</span><span class="rvalue big" id="fx_result">—</span></div>
+        <div class="result-row"><span class="rlabel">即時匯率</span><span class="rvalue" id="fx_rate_line">—</span></div>
+        <div class="result-row"><span class="rlabel">資料時間</span><span class="rvalue muted" id="fx_ts">—</span></div>
+      </div>
+      <div id="fx_error_box" style="display:none;margin-top:14px;background:#FFF3F1;border:1px solid #FFCFC8;border-radius:10px;padding:14px 16px;font-size:0.82rem;color:var(--ink-soft);">
+        <b style="color:var(--coral-dark);">抓取不到即時匯率？</b><br>
+        若這個頁面是在 Claude 對話內測試，網路權限會擋掉外部 API，這是預期狀況；上傳到 GitHub Pages（或任何靜態網站）後用瀏覽器直接開啟，即可正常抓取。若仍抓不到（例如離線或行動網路不穩），可在下方手動輸入匯率繼續使用。
+        <div class="grid grid-2" style="margin-top:10px;">
+          <div class="field">
+            <label>手動輸入：1 USD = ? TWD</label>
+            <input type="number" id="fx_manual_rate" placeholder="例如 31.5" step="0.0001">
+          </div>
+          <div class="field" style="align-self:end;">
+            <button class="ghost-btn" id="fx_manual_apply">套用手動匯率</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>常用幣別速覽（兌新台幣 TWD）</div>
+      <div class="table-wrap">
+        <table class="spec-table" id="fx_quick_table">
+          <thead><tr><th>幣別</th><th>兌台幣匯率</th><th>1,000元外幣 ≈ 台幣</th></tr></thead>
+          <tbody><tr><td colspan="3" style="text-align:center;color:#8AA0A4;">載入中…</td></tr></tbody>
+        </table>
+      </div>
+      <p class="note-line">資料來源：frankfurter.app（採用歐洲央行公告匯率，每個工作日更新）。若需與銀行交易匯率核對，請以實際採購當下銀行牌告為準。</p>
+    </div>
+  `;
+}
+
+async function fetchFxRates(){
+  state.fxLoading = true;
+  updateFxBadge();
+  try{
+    const resp = await fetch(`${FX_API}?from=USD`);
+    if(!resp.ok) throw new Error("fx fetch failed");
+    const data = await resp.json();
+    state.fxRates = { base:"USD", rates: { ...data.rates, USD:1 }, date: data.date, manual:false };
+    state.fxLoading = false;
+    updateFxBadge(true);
+    renderFxQuickTable();
+    recalcFx();
+    const box = document.getElementById("fx_error_box");
+    if(box) box.style.display = "none";
+  }catch(err){
+    state.fxLoading = false;
+    updateFxBadge(false, true);
+    const box = document.getElementById("fx_error_box");
+    if(box) box.style.display = "block";
+    console.error(err);
+  }
+}
+
+function updateFxBadge(success, failed){
+  const dot = document.getElementById("fxDot");
+  const txt = document.getElementById("fxBadgeText");
+  const dotM = document.getElementById("fxDotMobile");
+  const txtM = document.getElementById("fxBadgeTextMobile");
+
+  let dotClass, message;
+  if(state.fxLoading){
+    dotClass = "live-dot off";
+    message = "匯率載入中…";
+  }else if(failed){
+    dotClass = "live-dot off";
+    message = "抓取失敗，請見說明";
+  }else if(state.fxRates?.manual){
+    dotClass = "live-dot off";
+    message = "手動輸入匯率";
+  }else{
+    dotClass = "live-dot";
+    message = `已連線 · ${state.fxRates?.date || ""}`;
+  }
+
+  if(dot) dot.className = dotClass;
+  if(txt) txt.textContent = message;
+  if(dotM) dotM.className = dotClass;
+  if(txtM) txtM.textContent = message;
+}
+
+function convertFx(amount, from, to){
+  if(!state.fxRates) return null;
+  const r = state.fxRates.rates;
+  if(r[from]===undefined || r[to]===undefined) return null;
+  // rates are per 1 USD; amount_from -> USD -> to
+  const usdAmount = amount / r[from];
+  return usdAmount * r[to];
+}
+
+function recalcFx(){
+  const amount = parseFloat($("#fx_amount").value);
+  const from = $("#fx_from").value;
+  const to = $("#fx_to").value;
+  $("#fx_result_label").textContent = `${amount||0} ${from} ＝`;
+  if(!state.fxRates || isNaN(amount)){
+    $("#fx_result").textContent="—"; $("#fx_rate_line").textContent="—"; $("#fx_ts").textContent="—";
+    return;
+  }
+  const result = convertFx(amount, from, to);
+  const unitRate = convertFx(1, from, to);
+  $("#fx_result").textContent = fmt(result) + " " + to;
+  $("#fx_rate_line").textContent = `1 ${from} ＝ ${fmtFull(unitRate,4)} ${to}`;
+  $("#fx_ts").textContent = state.fxRates.date;
+}
+
+function renderFxQuickTable(){
+  const tbody = $("#fx_quick_table tbody");
+  if(!state.fxRates){ return; }
+  const r = state.fxRates.rates;
+  const twd = r["TWD"];
+  if(!twd){ tbody.innerHTML = `<tr><td colspan="3">無 TWD 資料</td></tr>`; return; }
+  const rows = FX_COMMON.filter(c=>c!=="TWD").map(c=>{
+    if(r[c]===undefined) return "";
+    const perUnit = twd / r[c]; // 1 unit of c -> how many TWD
+    const per1000 = perUnit*1000;
+    return `<tr><td class="label-cell">${c}</td><td>${fmtFull(perUnit,4)}</td><td>${fmt(per1000)} 元</td></tr>`;
+  }).join("");
+  tbody.innerHTML = rows || `<tr><td colspan="3">無資料</td></tr>`;
+}
+
+function wireFxPanel(){
+  $("#fx_amount").addEventListener("input", recalcFx);
+  $("#fx_from").addEventListener("change", recalcFx);
+  $("#fx_to").addEventListener("change", recalcFx);
+  $("#fx_from").value = "USD";
+  $("#fx_to").value = "TWD";
+  $("#fx_swap").addEventListener("click", ()=>{
+    const f = $("#fx_from").value, t = $("#fx_to").value;
+    $("#fx_from").value = t; $("#fx_to").value = f;
+    recalcFx();
+  });
+  $("#fx_refresh").addEventListener("click", fetchFxRates);
+
+  $("#fx_manual_apply").addEventListener("click", ()=>{
+    const manualRate = parseFloat($("#fx_manual_rate").value);
+    if(isNaN(manualRate) || manualRate<=0){
+      alert("請輸入有效的匯率數字（例如 31.5）。");
+      return;
+    }
+    // 建立一個只含 USD / TWD 的手動匯率表（其餘幣別無法手動換算）
+    state.fxRates = { base:"USD", rates:{ USD:1, TWD:manualRate }, date:"手動輸入", manual:true };
+    updateFxBadge();
+    renderFxQuickTable();
+    recalcFx();
+  });
+}
+
+/* =========================================================
+   3. 百分比計算器（三合一）
+   ========================================================= */
+function percentPanelHTML(){
+  return `
+    <div class="panel-head">
+      <h2>百分比計算器</h2>
+      <p>三種常用情境：取百分比、求佔比、算變化幅度。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>a. 計算某數值的百分之多少</div>
+      <div class="formula-tag">
+        <span class="fname">公式</span><br>
+        結果 ＝ 數值 × (百分比 ÷ 100)
+      </div>
+      <div class="grid grid-2">
+        <div class="field">
+          <label>數值</label>
+          <input type="number" id="p1_value" placeholder="例如 1500">
+        </div>
+        <div class="field">
+          <label>百分比（%）</label>
+          <input type="number" id="p1_percent" placeholder="例如 20">
+        </div>
+      </div>
+      <div class="result-box">
+        <div class="result-row"><span class="rlabel" id="p1_label">結果</span><span class="rvalue big" id="p1_result">—</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>b. 計算 A 是 B 的百分之多少</div>
+      <div class="formula-tag">
+        <span class="fname">公式</span><br>
+        A 佔 B 之百分比 ＝ (A ÷ B) × 100%
+      </div>
+      <div class="grid grid-2">
+        <div class="field">
+          <label>數值 A</label>
+          <input type="number" id="p2_a" placeholder="例如 300">
+        </div>
+        <div class="field">
+          <label>數值 B（基準）</label>
+          <input type="number" id="p2_b" placeholder="例如 1200">
+        </div>
+      </div>
+      <div class="result-box">
+        <div class="result-row"><span class="rlabel" id="p2_label">A 佔 B 的比例</span><span class="rvalue big" id="p2_result">—</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>c. 計算數值的變化百分比（增加 / 減少）</div>
+      <div class="formula-tag">
+        <span class="fname">公式</span><br>
+        變化百分比 ＝ (新數值－原數值) ÷ 原數值 × 100%
+      </div>
+      <div class="grid grid-2">
+        <div class="field">
+          <label>原數值</label>
+          <input type="number" id="p3_old" placeholder="例如 200">
+        </div>
+        <div class="field">
+          <label>新數值</label>
+          <input type="number" id="p3_new" placeholder="例如 250">
+        </div>
+      </div>
+      <div class="result-box">
+        <div class="result-row"><span class="rlabel">差額</span><span class="rvalue" id="p3_diff">—</span></div>
+        <div class="result-row"><span class="rlabel" id="p3_label">變化百分比</span><span class="rvalue big" id="p3_result">—</span></div>
+      </div>
+    </div>
+  `;
+}
+
+function wirePercentPanel(){
+  const v1=$("#p1_value"), pc1=$("#p1_percent");
+  function c1(){
+    const v=parseFloat(v1.value), p=parseFloat(pc1.value);
+    $("#p1_label").textContent = (isNaN(v)||isNaN(p)) ? "結果" : `${v} 的 ${p}%`;
+    if(isNaN(v)||isNaN(p)){ $("#p1_result").textContent="—"; return; }
+    $("#p1_result").textContent = fmt(v*(p/100));
+  }
+  [v1,pc1].forEach(el=>el.addEventListener("input",c1));
+
+  const a=$("#p2_a"), b=$("#p2_b");
+  function c2(){
+    const av=parseFloat(a.value), bv=parseFloat(b.value);
+    if(isNaN(av)||isNaN(bv)||bv===0){ $("#p2_result").textContent="—"; return; }
+    $("#p2_label").textContent = `${av} 佔 ${bv} 的比例`;
+    $("#p2_result").textContent = fmt((av/bv)*100)+" %";
+  }
+  [a,b].forEach(el=>el.addEventListener("input",c2));
+
+  const o=$("#p3_old"), n=$("#p3_new");
+  function c3(){
+    const ov=parseFloat(o.value), nv=parseFloat(n.value);
+    if(isNaN(ov)||isNaN(nv)||ov===0){
+      $("#p3_diff").textContent="—"; $("#p3_result").textContent="—"; $("#p3_label").textContent="變化百分比";
+      return;
+    }
+    const diff = nv-ov;
+    const pct = (diff/ov)*100;
+    $("#p3_diff").textContent = (diff>=0?"+":"")+fmt(diff);
+    $("#p3_label").textContent = diff>=0 ? "增加百分比" : "減少百分比";
+    $("#p3_result").textContent = (pct>=0?"+":"")+fmt(pct)+" %";
+  }
+  [o,n].forEach(el=>el.addEventListener("input",c3));
+}
+
+/* =========================================================
+   4. 白蝦規格換算器（Count Conversion）
+   規格 = 每公斤尾數區間，例如 16/20 代表每公斤 16~20 尾
+   每隻重量區間：最重(g) = 1000/下限尾數 ；最輕(g) = 1000/上限尾數
+   給定下盤重 W(g)：尾數區間 = [W×下限尾數/1000 , W×上限尾數/1000]
+   （不四捨五入）
+   ========================================================= */
+const SHRIMP_SPECS = [
+  {min:16,max:20},
+  {min:21,max:25},
+  {min:26,max:30},
+  {min:31,max:35},
+  {min:30,max:40},
+  {min:40,max:50},
+  {min:50,max:60},
+  {min:60,max:70},
+  {min:70,max:80},
+  {min:80,max:100},
+];
+
+function perShrimpWeightRange(min,max){
+  // min尾(較少) -> 每隻較重；max尾(較多) -> 每隻較輕
+  const heaviest = 1000/min;
+  const lightest = 1000/max;
+  return { lightest, heaviest }; // lightest < heaviest
+}
+
+function countRangeForWeight(min,max,weightG){
+  const countLow = weightG*min/1000;   // 對應較重的隻 -> 隻數較少
+  const countHigh = weightG*max/1000;  // 對應較輕的隻 -> 隻數較多
+  return { countLow, countHigh };
+}
+
+function specPanelHTML(){
+  const rows = SHRIMP_SPECS.map(s=>{
+    const {lightest,heaviest} = perShrimpWeightRange(s.min,s.max);
+    return `<tr>
+      <td class="label-cell">${s.min}/${s.max}</td>
+      <td>${s.min} – ${s.max} 尾</td>
+      <td>${fmtFull(lightest,1)} – ${fmtFull(heaviest,1)} g</td>
+    </tr>`;
+  }).join("");
+
+  const specOptions = SHRIMP_SPECS.map(s=>`<option value="${s.min}-${s.max}">${s.min}/${s.max}（每公斤 ${s.min}-${s.max} 尾）</option>`).join("");
+
+  return `
+    <div class="panel-head">
+      <h2>白蝦規格換算器（Count Conversion）</h2>
+      <p>規格代表「每公斤尾數區間」。已知下盤重量，反推尾數區間；不四捨五入，由你自行評估進位方式。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>固定規格對照表</div>
+      <div class="formula-tag">
+        <span class="fname">公式</span><br>
+        每隻重量上限(較重) ＝ 1000g ÷ 下限尾數　／　每隻重量下限(較輕) ＝ 1000g ÷ 上限尾數
+      </div>
+      <div class="table-wrap">
+        <table class="spec-table">
+          <thead><tr><th>規格</th><th>每公斤尾數</th><th>每隻重量區間</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>換算工具：用下盤重量反推尾數區間</div>
+      <div class="formula-tag">
+        <span class="fname">公式</span><br>
+        尾數下限 ＝ 下盤重(g) × 每公斤尾數下限 ÷ 1000<br>
+        尾數上限 ＝ 下盤重(g) × 每公斤尾數上限 ÷ 1000
+      </div>
+
+      <div class="sub-tabs">
+        <button class="sub-tab-btn active" data-sub="preset">選擇固定規格</button>
+        <button class="sub-tab-btn" data-sub="custom">自訂每公斤尾數</button>
+      </div>
+
+      <div class="sub-panel active" id="sub-preset">
+        <div class="grid grid-2">
+          <div class="field">
+            <label>選擇規格</label>
+            <select id="s_preset_select">${specOptions}</select>
+          </div>
+          <div class="field">
+            <label>目前下盤重量（g）</label>
+            <input type="number" id="s_preset_weight" placeholder="例如 600" value="600">
+          </div>
+        </div>
+      </div>
+
+      <div class="sub-panel" id="sub-custom">
+        <div class="grid grid-3">
+          <div class="field">
+            <label>每公斤尾數下限</label>
+            <input type="number" id="s_custom_min" placeholder="例如 16">
+          </div>
+          <div class="field">
+            <label>每公斤尾數上限</label>
+            <input type="number" id="s_custom_max" placeholder="例如 20">
+          </div>
+          <div class="field">
+            <label>目前下盤重量（g）</label>
+            <input type="number" id="s_custom_weight" placeholder="例如 600">
+          </div>
+        </div>
+      </div>
+
+      <div class="result-box" id="s_result">
+        <div class="result-row"><span class="rlabel">每隻重量區間（依規格）</span><span class="rvalue" id="s_perweight">—</span></div>
+        <div class="result-row"><span class="rlabel">換算尾數區間（不四捨五入）</span><span class="rvalue big" id="s_countrange">—</span></div>
+      </div>
+
+      <p class="note-line">小提醒：尾數越少代表單隻越重（蝦體越大），尾數越多代表單隻越輕（蝦體越小）。</p>
+    </div>
+  `;
+}
+
+function calcSpecResult(min,max,weight){
+  if(isNaN(min)||isNaN(max)||isNaN(weight)||min<=0||max<=0){
+    $("#s_perweight").textContent="—";
+    $("#s_countrange").textContent="—";
+    return;
+  }
+  const {lightest,heaviest} = perShrimpWeightRange(min,max);
+  const {countLow,countHigh} = countRangeForWeight(min,max,weight);
+  $("#s_perweight").textContent = `${fmtFull(lightest,1)} – ${fmtFull(heaviest,1)} g / 隻`;
+  $("#s_countrange").textContent = `${fmtFull(countLow,4)} – ${fmtFull(countHigh,4)} 尾`;
+}
+
+function wireSpecPanel(){
+  $all(".sub-tab-btn", document.getElementById("panel-spec")).forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      $all(".sub-tab-btn", document.getElementById("panel-spec")).forEach(b=>b.classList.toggle("active", b===btn));
+      const target = btn.dataset.sub;
+      $all(".sub-panel", document.getElementById("panel-spec")).forEach(p=>{
+        p.classList.toggle("active", p.id === "sub-"+target);
+      });
+      runSpecCalc();
+    });
+  });
+
+  function runSpecCalc(){
+    const activeSub = $(".sub-tab-btn.active", document.getElementById("panel-spec")).dataset.sub;
+    if(activeSub==="preset"){
+      const [min,max] = $("#s_preset_select").value.split("-").map(Number);
+      const weight = parseFloat($("#s_preset_weight").value);
+      calcSpecResult(min,max,weight);
+    }else{
+      const min = parseFloat($("#s_custom_min").value);
+      const max = parseFloat($("#s_custom_max").value);
+      const weight = parseFloat($("#s_custom_weight").value);
+      calcSpecResult(min,max,weight);
+    }
+  }
+
+  ["#s_preset_select","#s_preset_weight"].forEach(sel=>$(sel).addEventListener("input", runSpecCalc));
+  $("#s_preset_select").addEventListener("change", runSpecCalc);
+  ["#s_custom_min","#s_custom_max","#s_custom_weight"].forEach(sel=>$(sel).addEventListener("input", runSpecCalc));
+
+  runSpecCalc();
+}
+
+/* =========================================================
+   5. 白蝦採購成本計算器 ＋ 毛利計算器（同頁）
+   台幣成本 = [(美金成本 × 1.0045 × 關稅(15% or 20%) × 匯率) + 3] × 1.05
+   ========================================================= */
+function costPanelHTML(){
+  return `
+    <div class="panel-head">
+      <h2>白蝦採購成本計算器</h2>
+      <p>美金採購價換算台幣成本，並可直接接續算毛利率。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>美金成本 → 台幣成本</div>
+      <div class="formula-tag">
+        <span class="fname">公式</span><br>
+        台幣成本 ＝ [（美金成本 × 1.0045 × (1＋關稅率) × 匯率） ＋ 3] × 1.05　<span style="color:#8AA0A4">（1.05 為營業稅）</span>
+      </div>
+      <div class="grid grid-2">
+        <div class="field">
+          <label>美金採購成本（USD / 單位）</label>
+          <input type="number" id="c_usd" placeholder="例如 30" step="0.01">
+        </div>
+        <div class="field">
+          <label>匯率（USD → TWD，自行輸入）</label>
+          <input type="number" id="c_fxrate" placeholder="例如 31.5" step="0.0001">
+          <span class="hint" id="c_fx_hint">可參考「匯率換算器」分頁的即時匯率</span>
+        </div>
+      </div>
+      <div class="field" style="margin-top:4px;">
+        <label>關稅率</label>
+        <div class="radio-row">
+          <label class="radio-chip" id="c_tariff15_wrap"><input type="radio" name="c_tariff" id="c_tariff15" value="0.15" checked>15%</label>
+          <label class="radio-chip" id="c_tariff20_wrap"><input type="radio" name="c_tariff" id="c_tariff20" value="0.20">20%</label>
+        </div>
+      </div>
+      <div style="margin-top:6px;">
+        <button class="ghost-btn" id="c_use_fx">套用即時匯率</button>
+      </div>
+
+      <div class="result-box" style="margin-top:16px;">
+        <div class="result-row"><span class="rlabel">含關稅成本（美金成本×1.0045×(1+關稅率)×匯率）</span><span class="rvalue muted" id="c_step1">—</span></div>
+        <div class="result-row"><span class="rlabel">＋固定費用 3 元後</span><span class="rvalue muted" id="c_step2">—</span></div>
+        <div class="result-row"><span class="rlabel">台幣成本（含營業稅）</span><span class="rvalue big" id="c_final">—</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>接續：毛利計算器</div>
+      <div class="formula-tag">
+        <span class="fname">公式</span><br>
+        毛利率 (%) ＝ (售價－成本) ÷ 售價 × 100%　<span style="color:#8AA0A4">（成本自動套用左方算出的台幣成本，亦可手動覆寫）</span>
+      </div>
+      <div class="grid grid-2">
+        <div class="field">
+          <label>成本（台幣 / 單位）<span class="hint">自動帶入，可手動修改</span></label>
+          <input type="number" id="c_cost_for_margin" placeholder="自動帶入台幣成本" step="0.01">
+        </div>
+        <div class="field">
+          <label>預計售價（台幣 / 單位）</label>
+          <input type="number" id="c_price" placeholder="例如 1300" step="0.01">
+        </div>
+      </div>
+      <div style="margin-top:6px;">
+        <button class="ghost-btn" id="c_reset_auto">重新自動套用台幣成本</button>
+      </div>
+      <div class="result-box" style="margin-top:16px;">
+        <div class="result-row"><span class="rlabel">毛利金額</span><span class="rvalue" id="c_margin_profit">—</span></div>
+        <div class="result-row"><span class="rlabel">毛利率</span><span class="rvalue big" id="c_margin_rate">—</span></div>
+      </div>
+    </div>
+  `;
+}
+
+function wireCostPanel(){
+  const usd=$("#c_usd"), fxr=$("#c_fxrate"), price=$("#c_price"), costForMargin=$("#c_cost_for_margin");
+  let costManuallyEdited = false;
+
+  function getTariff(){
+    return parseFloat(document.querySelector('input[name="c_tariff"]:checked').value);
+  }
+  function updateTariffChips(){
+    document.getElementById("c_tariff15_wrap").classList.toggle("checked", document.getElementById("c_tariff15").checked);
+    document.getElementById("c_tariff20_wrap").classList.toggle("checked", document.getElementById("c_tariff20").checked);
+  }
+  $all('input[name="c_tariff"]').forEach(r=>r.addEventListener("change", ()=>{updateTariffChips(); calcCost();}));
+  updateTariffChips();
+
+  function calcCost(){
+    const u = parseFloat(usd.value), fx = parseFloat(fxr.value), tariff = getTariff();
+    if(isNaN(u)||isNaN(fx)){
+      $("#c_step1").textContent="—"; $("#c_step2").textContent="—"; $("#c_final").textContent="—";
+      return;
+    }
+    const step1 = u * 1.0045 * (1+tariff) * fx;
+    const step2 = step1 + 3;
+    const final = step2 * 1.05;
+    $("#c_step1").textContent = fmt(step1) + " 元";
+    $("#c_step2").textContent = fmt(step2) + " 元";
+    $("#c_final").textContent = fmt(final) + " 元";
+
+    // 自動帶入毛利計算器，除非使用者手動改過成本欄位
+    if(!costManuallyEdited){
+      costForMargin.value = final.toFixed(2);
+      calcMargin();
+    }
+  }
+  [usd,fxr].forEach(el=>el.addEventListener("input", calcCost));
+  calcCost();
+
+  $("#c_use_fx").addEventListener("click", ()=>{
+    if(state.fxRates && state.fxRates.rates["TWD"]){
+      fxr.value = fmtFull(state.fxRates.rates["TWD"], 4);
+      calcCost();
+    }else{
+      alert("即時匯率尚未載入，請稍候或切到匯率換算器分頁重新抓取。");
+    }
+  });
+
+  function calcMargin(){
+    const c = parseFloat(costForMargin.value), p = parseFloat(price.value);
+    if(isNaN(c)||isNaN(p)||p===0){
+      $("#c_margin_profit").textContent="—"; $("#c_margin_rate").textContent="—";
+      return;
+    }
+    const profit = p-c;
+    $("#c_margin_profit").textContent = fmt(profit)+" 元";
+    $("#c_margin_rate").textContent = fmt((profit/p)*100)+" %";
+  }
+  costForMargin.addEventListener("input", ()=>{ costManuallyEdited = true; calcMargin(); });
+  price.addEventListener("input", calcMargin);
+
+  $("#c_reset_auto").addEventListener("click", ()=>{
+    costManuallyEdited = false;
+    calcCost();
+  });
+}
+
+/* =========================================================
+   6. 包冰率計算器（業務冰 / 工廠冰）
+   業務冰 = 淨重 ÷ 含冰重
+   工廠冰 = (含冰重－淨重) ÷ 含冰重
+   ========================================================= */
+function icePanelHTML(){
+  return `
+    <div class="panel-head">
+      <h2>包冰率計算器</h2>
+      <p>業務冰與工廠冰，計算邏輯不同，請依需求分別使用。</p>
+    </div>
+
+    <div class="two-col-tools">
+      <div class="card">
+        <div class="card-title"><span class="dot"></span>業務冰算法</div>
+        <div class="formula-tag">
+          <span class="fname">公式</span><br>
+          業務冰率 ＝ 淨重 ÷ 含冰重
+        </div>
+        <div class="grid">
+          <div class="field">
+            <label>淨重（不含冰，g 或 kg 皆可，單位需一致）</label>
+            <input type="number" id="ice_b_net" placeholder="例如 850">
+          </div>
+          <div class="field">
+            <label>含冰重（總重）</label>
+            <input type="number" id="ice_b_gross" placeholder="例如 1000">
+          </div>
+        </div>
+        <div class="result-box">
+          <div class="result-row"><span class="rlabel">業務冰率</span><span class="rvalue big" id="ice_b_result">—</span></div>
+          <div class="result-row"><span class="rlabel">換算淨肉比例</span><span class="rvalue muted" id="ice_b_pct">—</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title"><span class="dot"></span>工廠冰算法</div>
+        <div class="formula-tag">
+          <span class="fname">公式</span><br>
+          工廠冰率 ＝ (含冰重－淨重) ÷ 含冰重
+        </div>
+        <div class="grid">
+          <div class="field">
+            <label>含冰重（總重）</label>
+            <input type="number" id="ice_f_gross" placeholder="例如 1000">
+          </div>
+          <div class="field">
+            <label>淨重（不含冰）</label>
+            <input type="number" id="ice_f_net" placeholder="例如 850">
+          </div>
+        </div>
+        <div class="result-box">
+          <div class="result-row"><span class="rlabel">包冰重量</span><span class="rvalue" id="ice_f_icevalue">—</span></div>
+          <div class="result-row"><span class="rlabel">工廠冰率</span><span class="rvalue big" id="ice_f_result">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="note-line" style="font-size:0.8rem;">
+        差異說明：業務冰率呈現「淨肉佔總重的比例」（數值越高代表含冰越少）；工廠冰率呈現「冰佔總重的比例」（數值越高代表含冰越多）。兩者計算角度相反，請依公司慣用定義選用對應公式，避免混用造成誤判。
+      </p>
+    </div>
+  `;
+}
+
+function wireIcePanel(){
+  const bn=$("#ice_b_net"), bg=$("#ice_b_gross");
+  function calcB(){
+    const net=parseFloat(bn.value), gross=parseFloat(bg.value);
+    if(isNaN(net)||isNaN(gross)||gross===0){
+      $("#ice_b_result").textContent="—"; $("#ice_b_pct").textContent="—";
+      return;
+    }
+    const ratio = net/gross;
+    $("#ice_b_result").textContent = fmtFull(ratio,4);
+    $("#ice_b_pct").textContent = fmt(ratio*100)+" %";
+  }
+  [bn,bg].forEach(el=>el.addEventListener("input",calcB));
+
+  const fg=$("#ice_f_gross"), fn=$("#ice_f_net");
+  function calcF(){
+    const gross=parseFloat(fg.value), net=parseFloat(fn.value);
+    if(isNaN(gross)||isNaN(net)||gross===0){
+      $("#ice_f_icevalue").textContent="—"; $("#ice_f_result").textContent="—";
+      return;
+    }
+    const ice = gross-net;
+    const ratio = ice/gross;
+    $("#ice_f_icevalue").textContent = fmt(ice);
+    $("#ice_f_result").textContent = fmt(ratio*100)+" %";
+  }
+  [fg,fn].forEach(el=>el.addEventListener("input",calcF));
+}
+
+/* =========================================================
+   Init
+   ========================================================= */
+function init(){
+  buildTabs();
+  buildPanels();
+  wireMarginPanel();
+  wireFxPanel();
+  wirePercentPanel();
+  wireSpecPanel();
+  wireCostPanel();
+  wireIcePanel();
+  fetchFxRates();
+}
+
+document.addEventListener("DOMContentLoaded", init);
+
+</script>
+</body>
+</html>
