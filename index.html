@@ -203,19 +203,23 @@ body{
   .mt-brand-text h1{
     font-family:'Archivo Expanded',sans-serif;
     font-weight:800;
-    font-size:0.95rem;
+    font-size:0.78rem;
     color:var(--white);
     margin:0;
+    white-space:nowrap;
   }
   .mt-fx-badge{
-    display:flex;align-items:center;gap:6px;
+    display:flex;align-items:center;gap:5px;
     background:rgba(255,255,255,0.1);
     border-radius:999px;
-    padding:5px 10px;
-    font-size:0.65rem;
+    padding:4px 8px;
+    font-size:0.6rem;
     color:rgba(255,255,255,0.85);
     font-family:'JetBrains Mono',monospace;
     white-space:nowrap;
+    max-width:110px;
+    overflow:hidden;
+    text-overflow:ellipsis;
   }
   .mt-tabs{
     display:flex;
@@ -778,15 +782,17 @@ async function fetchFxRates(){
 
 function updateFxBadge(success, failed){
   const els = [
-    [document.getElementById("fxDot"), document.getElementById("fxBadgeText")],
+  [document.getElementById("fxDot"), document.getElementById("fxBadgeText")],
     [document.getElementById("fxDotMobile"), document.getElementById("fxBadgeTextMobile")],
   ];
-  let cls, msg;
-  if(state.fxLoading){ cls="live-dot off"; msg="匯率載入中…"; }
-  else if(failed){ cls="live-dot off"; msg="抓取失敗，請見說明"; }
-  else if(state.fxRates?.manual){ cls="live-dot off"; msg="手動輸入匯率"; }
-  else{ cls="live-dot"; msg=`已連線(${state.fxRates?.source}) · ${state.fxRates?.date||""}`; }
-  els.forEach(([dot,txt])=>{ if(dot)dot.className=cls; if(txt)txt.textContent=msg; });
+  let cls, msg, msgMobile;
+  if(state.fxLoading){ cls="live-dot off"; msg="匯率載入中…"; msgMobile="載入中…"; }
+  else if(failed){ cls="live-dot off"; msg="抓取失敗，請見說明"; msgMobile="抓取失敗"; }
+  else if(state.fxRates?.manual){ cls="live-dot off"; msg="手動輸入匯率"; msgMobile="手動匯率"; }
+  else{ cls="live-dot"; msg=`已連線(${state.fxRates?.source}) · ${state.fxRates?.date||""}`; msgMobile="已連線"; }
+  const [[dot,txt],[dotM,txtM]]=els;
+  if(dot)dot.className=cls; if(txt)txt.textContent=msg;
+  if(dotM)dotM.className=cls; if(txtM)txtM.textContent=msgMobile;
 }
 
 function convertFx(amount, from, to){
