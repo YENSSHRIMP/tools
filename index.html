@@ -556,8 +556,9 @@ table.spec-table td.label-cell{
 
 <script>
 /* =========================================================
-   白蝦採購工具箱 — app.js
-   六個分頁：1.毛利率 2.匯率換算 3.百分比 4.規格換算 5.採購成本+毛利 6.包冰率
+   白蝦採購工具箱 — 完整版（10個工具）
+   修正：匯率API三來源備援
+   新增：07周轉天數 08重量換算 09裝櫃計算 10賣價反推USD
    ========================================================= */
 
 const TABS = [
@@ -567,10 +568,14 @@ const TABS = [
   { id:"spec",     num:"04", label:"白蝦規格換算" },
   { id:"cost",     num:"05", label:"採購成本＋毛利" },
   { id:"ice",      num:"06", label:"包冰率計算器" },
+  { id:"turnover", num:"07", label:"周轉天數" },
+  { id:"weight",   num:"08", label:"重量單位換算" },
+  { id:"container",num:"09", label:"裝櫃計算器" },
+  { id:"reverse",  num:"10", label:"賣價反推USD成本" },
 ];
 
 let state = {
-  fxRates: null,      // { base: 'USD', rates: {TWD: xx, ...}, ts: ... }
+  fxRates: null,
   fxLoading: false,
 };
 
@@ -578,19 +583,14 @@ let state = {
 function buildTabs(){
   const sbNav = document.getElementById("sbNav");
   const mtNav = document.getElementById("mtNav");
-
   sbNav.innerHTML = TABS.map((t,i)=>`
     <button class="sb-tab-btn${i===0?' active':''}" data-tab="${t.id}">
       <span class="tab-num">${t.num}</span>${t.label}
-    </button>
-  `).join("");
-
+    </button>`).join("");
   mtNav.innerHTML = TABS.map((t,i)=>`
     <button class="mt-tab-btn${i===0?' active':''}" data-tab="${t.id}">
       <span class="tab-num">${t.num}</span>${t.label}
-    </button>
-  `).join("");
-
+    </button>`).join("");
   [...sbNav.querySelectorAll(".sb-tab-btn"), ...mtNav.querySelectorAll(".mt-tab-btn")].forEach(btn=>{
     btn.addEventListener("click", ()=> switchTab(btn.dataset.tab));
   });
@@ -615,13 +615,17 @@ function buildPanels(){
     <section class="panel" id="panel-spec">${specPanelHTML()}</section>
     <section class="panel" id="panel-cost">${costPanelHTML()}</section>
     <section class="panel" id="panel-ice">${icePanelHTML()}</section>
+    <section class="panel" id="panel-turnover">${turnoverPanelHTML()}</section>
+    <section class="panel" id="panel-weight">${weightPanelHTML()}</section>
+    <section class="panel" id="panel-container">${containerPanelHTML()}</section>
+    <section class="panel" id="panel-reverse">${reversePanelHTML()}</section>
   `;
 }
 
 /* ---------------- helpers ---------------- */
 function fmt(num, digits=2){
-  if(num===null || num===undefined || isNaN(num)) return "—";
-  return Number(num).toLocaleString("zh-TW", { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+  if(num===null||num===undefined||isNaN(num)) return "—";
+  return Number(num).toLocaleString("zh-TW",{maximumFractionDigits:digits,minimumFractionDigits:0});
 }
 function fmtFull(num, digits=4){
   if(num===null||num===undefined||isNaN(num)) return "—";
@@ -632,14 +636,10 @@ function $all(sel, scope=document){ return [...scope.querySelectorAll(sel)]; }
 
 /* =========================================================
    1. 毛利率計算器
-   毛利率(%) = (售價－成本) ÷ 售價 × 100%
    ========================================================= */
 function marginPanelHTML(){
   return `
-    <div class="panel-head">
-      <h2>毛利率計算器</h2>
-      <p>輸入售價與成本，立即算出毛利率與毛利金額。</p>
-    </div>
+    <div class="panel-head"><h2>毛利率計算器</h2><p>輸入售價與成本，立即算出毛利率與毛利金額。</p></div>
     <div class="card">
       <div class="card-title"><span class="dot"></span>毛利率 Gross Margin</div>
       <div class="formula-tag">
@@ -647,110 +647,75 @@ function marginPanelHTML(){
         毛利率 (%) ＝ <b>(售價－成本) ÷ 售價</b> × 100%
       </div>
       <div class="grid grid-2">
-        <div class="field">
-          <label>售價（每單位）</label>
-          <input type="number" id="m_price" placeholder="例如 250" step="0.01">
-        </div>
-        <div class="field">
-          <label>成本（每單位）</label>
-          <input type="number" id="m_cost" placeholder="例如 180" step="0.01">
-        </div>
+        <div class="field"><label>售價（每單位）</label><input type="number" id="m_price" placeholder="例如 250" step="0.01"></div>
+        <div class="field"><label>成本（每單位）</label><input type="number" id="m_cost" placeholder="例如 180" step="0.01"></div>
       </div>
-      <div class="result-box" id="m_result">
+      <div class="result-box">
         <div class="result-row"><span class="rlabel">毛利金額（售價－成本）</span><span class="rvalue" id="m_profit">—</span></div>
         <div class="result-row"><span class="rlabel">毛利率</span><span class="rvalue big" id="m_rate">—</span></div>
         <div class="result-row"><span class="rlabel">成本占售價比例</span><span class="rvalue muted" id="m_costratio">—</span></div>
       </div>
-      <p class="note-line">提示：若已知「成本」與「目標毛利率」，也可反推應訂的售價，見下方輔助計算。</p>
     </div>
-
     <div class="card">
       <div class="card-title"><span class="dot"></span>反推：已知成本＋目標毛利率 → 應訂售價</div>
-      <div class="formula-tag">
-        <span class="fname">公式</span><br>
-        售價 ＝ 成本 ÷ (1－目標毛利率)
-      </div>
+      <div class="formula-tag"><span class="fname">公式</span><br>售價 ＝ 成本 ÷ (1－目標毛利率)</div>
       <div class="grid grid-2">
-        <div class="field">
-          <label>成本（每單位）</label>
-          <input type="number" id="m2_cost" placeholder="例如 180" step="0.01">
-        </div>
-        <div class="field">
-          <label>目標毛利率（%）</label>
-          <input type="number" id="m2_target" placeholder="例如 30" step="0.1">
-        </div>
+        <div class="field"><label>成本（每單位）</label><input type="number" id="m2_cost" placeholder="例如 180" step="0.01"></div>
+        <div class="field"><label>目標毛利率（%）</label><input type="number" id="m2_target" placeholder="例如 30" step="0.1"></div>
       </div>
       <div class="result-box">
         <div class="result-row"><span class="rlabel">建議售價</span><span class="rvalue big" id="m2_price">—</span></div>
         <div class="result-row"><span class="rlabel">毛利金額</span><span class="rvalue" id="m2_profit">—</span></div>
       </div>
-    </div>
-  `;
+    </div>`;
 }
-
 function wireMarginPanel(){
-  const price = $("#m_price"), cost = $("#m_cost");
+  const price=$("#m_price"), cost=$("#m_cost");
   function calc(){
-    const p = parseFloat(price.value), c = parseFloat(cost.value);
-    if(isNaN(p) || isNaN(c) || p===0){
-      $("#m_profit").textContent="—"; $("#m_rate").textContent="—"; $("#m_costratio").textContent="—";
-      return;
-    }
-    const profit = p - c;
-    const rate = (profit/p)*100;
-    const costRatio = (c/p)*100;
-    $("#m_profit").textContent = fmt(profit) + " 元";
-    $("#m_rate").textContent = fmt(rate) + " %";
-    $("#m_costratio").textContent = fmt(costRatio) + " %";
+    const p=parseFloat(price.value), c=parseFloat(cost.value);
+    if(isNaN(p)||isNaN(c)||p===0){$("#m_profit").textContent="—";$("#m_rate").textContent="—";$("#m_costratio").textContent="—";return;}
+    $("#m_profit").textContent=fmt(p-c)+" 元";
+    $("#m_rate").textContent=fmt(((p-c)/p)*100)+" %";
+    $("#m_costratio").textContent=fmt((c/p)*100)+" %";
   }
-  [price,cost].forEach(el=>el.addEventListener("input", calc));
-
-  const c2 = $("#m2_cost"), t2 = $("#m2_target");
+  [price,cost].forEach(el=>el.addEventListener("input",calc));
+  const c2=$("#m2_cost"), t2=$("#m2_target");
   function calc2(){
-    const cost = parseFloat(c2.value), target = parseFloat(t2.value);
-    if(isNaN(cost) || isNaN(target) || target>=100){
-      $("#m2_price").textContent="—"; $("#m2_profit").textContent="—";
-      return;
-    }
-    const price = cost / (1 - target/100);
-    $("#m2_price").textContent = fmt(price) + " 元";
-    $("#m2_profit").textContent = fmt(price-cost) + " 元";
+    const cost=parseFloat(c2.value), target=parseFloat(t2.value);
+    if(isNaN(cost)||isNaN(target)||target>=100){$("#m2_price").textContent="—";$("#m2_profit").textContent="—";return;}
+    const price=cost/(1-target/100);
+    $("#m2_price").textContent=fmt(price)+" 元";
+    $("#m2_profit").textContent=fmt(price-cost)+" 元";
   }
-  [c2,t2].forEach(el=>el.addEventListener("input", calc2));
+  [c2,t2].forEach(el=>el.addEventListener("input",calc2));
 }
 
 /* =========================================================
-   2. 匯率換算器（即時匯率 API）
+   2. 匯率換算器（三來源備援）
    ========================================================= */
-const FX_API = "https://api.frankfurter.app/latest"; // 免費、無需 key
 const FX_COMMON = ["TWD","USD","JPY","CNY","EUR","HKD","KRW","THB","VND","GBP","AUD"];
+const FX_SOURCES = [
+  { name:"frankfurter.dev", url:"https://api.frankfurter.dev/v1/latest?from=USD",
+    parse: d=>({ rates:{...d.rates, USD:1}, date:d.date }) },
+  { name:"frankfurter.app", url:"https://api.frankfurter.app/latest?from=USD",
+    parse: d=>({ rates:{...d.rates, USD:1}, date:d.date }) },
+  { name:"open.er-api.com", url:"https://open.er-api.com/v6/latest/USD",
+    parse: d=>({ rates:d.rates, date:d.time_last_update_utc }) },
+  { name:"exchangerate-api.com", url:"https://api.exchangerate-api.com/v4/latest/USD",
+    parse: d=>({ rates:d.rates, date:d.date }) },
+];
 
 function fxPanelHTML(){
   const opts = FX_COMMON.map(c=>`<option value="${c}">${c}</option>`).join("");
   return `
-    <div class="panel-head">
-      <h2>匯率換算器</h2>
-      <p>即時抓取各幣別匯率，支援雙向換算與快速採購幣別。</p>
-    </div>
+    <div class="panel-head"><h2>匯率換算器</h2><p>即時抓取各幣別匯率，三來源自動備援，支援雙向換算。</p></div>
     <div class="card">
       <div class="card-title"><span class="dot"></span>即時匯率換算</div>
-      <div class="formula-tag">
-        <span class="fname">公式</span><br>
-        換算金額 ＝ 來源金額 × (目標幣匯率 ÷ 來源幣匯率)　<span style="color:#8AA0A4">（皆以美元為中介換算）</span>
-      </div>
+      <div class="formula-tag"><span class="fname">公式</span><br>換算金額 ＝ 來源金額 × (目標幣匯率 ÷ 來源幣匯率)　<span style="color:#8AA0A4">（以美元為中介換算）</span></div>
       <div class="grid grid-3">
-        <div class="field">
-          <label>金額</label>
-          <input type="number" id="fx_amount" value="1000" step="0.01">
-        </div>
-        <div class="field">
-          <label>從（來源幣別）</label>
-          <select id="fx_from">${opts}</select>
-        </div>
-        <div class="field">
-          <label>換成（目標幣別）</label>
-          <select id="fx_to">${opts}</select>
-        </div>
+        <div class="field"><label>金額</label><input type="number" id="fx_amount" value="1000" step="0.01"></div>
+        <div class="field"><label>從（來源幣別）</label><select id="fx_from">${opts}</select></div>
+        <div class="field"><label>換成（目標幣別）</label><select id="fx_to">${opts}</select></div>
       </div>
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
         <button class="calc-btn" id="fx_swap">⇄ 互換幣別</button>
@@ -759,23 +724,18 @@ function fxPanelHTML(){
       <div class="result-box" style="margin-top:16px;">
         <div class="result-row"><span class="rlabel" id="fx_result_label">換算結果</span><span class="rvalue big" id="fx_result">—</span></div>
         <div class="result-row"><span class="rlabel">即時匯率</span><span class="rvalue" id="fx_rate_line">—</span></div>
-        <div class="result-row"><span class="rlabel">資料時間</span><span class="rvalue muted" id="fx_ts">—</span></div>
+        <div class="result-row"><span class="rlabel">資料來源 / 時間</span><span class="rvalue muted" id="fx_ts">—</span></div>
       </div>
       <div id="fx_error_box" style="display:none;margin-top:14px;background:#FFF3F1;border:1px solid #FFCFC8;border-radius:10px;padding:14px 16px;font-size:0.82rem;color:var(--ink-soft);">
-        <b style="color:var(--coral-dark);">抓取不到即時匯率？</b><br>
-        若這個頁面是在 Claude 對話內測試，網路權限會擋掉外部 API，這是預期狀況；上傳到 GitHub Pages（或任何靜態網站）後用瀏覽器直接開啟，即可正常抓取。若仍抓不到（例如離線或行動網路不穩），可在下方手動輸入匯率繼續使用。
+        <b style="color:var(--coral-dark);">目前無法取得即時匯率，請手動輸入匯率。</b><br>
+        已依序嘗試 Frankfurter API（frankfurter.dev / frankfurter.app）、open.er-api.com、ExchangeRate-API 共四個來源皆未成功。常見原因：裝置目前離線、或瀏覽器安全設定封鎖第三方請求。可按「重新抓取」再試，或在下方手動輸入匯率繼續使用。
+        <div style="margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:#8AA0A4;">錯誤：<span id="fx_error_detail">—</span></div>
         <div class="grid grid-2" style="margin-top:10px;">
-          <div class="field">
-            <label>手動輸入：1 USD = ? TWD</label>
-            <input type="number" id="fx_manual_rate" placeholder="例如 31.5" step="0.0001">
-          </div>
-          <div class="field" style="align-self:end;">
-            <button class="ghost-btn" id="fx_manual_apply">套用手動匯率</button>
-          </div>
+          <div class="field"><label>手動輸入：1 USD = ? TWD</label><input type="number" id="fx_manual_rate" placeholder="例如 31.5" step="0.0001"></div>
+          <div class="field" style="align-self:end;"><button class="ghost-btn" id="fx_manual_apply">套用手動匯率</button></div>
         </div>
       </div>
     </div>
-
     <div class="card">
       <div class="card-title"><span class="dot"></span>常用幣別速覽（兌新台幣 TWD）</div>
       <div class="table-wrap">
@@ -784,589 +744,328 @@ function fxPanelHTML(){
           <tbody><tr><td colspan="3" style="text-align:center;color:#8AA0A4;">載入中…</td></tr></tbody>
         </table>
       </div>
-      <p class="note-line">資料來源：frankfurter.app（採用歐洲央行公告匯率，每個工作日更新）。若需與銀行交易匯率核對，請以實際採購當下銀行牌告為準。</p>
-    </div>
-  `;
+      <p class="note-line">資料來源：依序嘗試 Frankfurter API（ECB匯率）→ open.er-api.com → ExchangeRate-API，四來源自動備援。請以實際採購當下銀行牌告為準。</p>
+    </div>`;
 }
 
 async function fetchFxRates(){
   state.fxLoading = true;
   updateFxBadge();
-  try{
-    const resp = await fetch(`${FX_API}?from=USD`);
-    if(!resp.ok) throw new Error("fx fetch failed");
-    const data = await resp.json();
-    state.fxRates = { base:"USD", rates: { ...data.rates, USD:1 }, date: data.date, manual:false };
-    state.fxLoading = false;
-    updateFxBadge(true);
-    renderFxQuickTable();
-    recalcFx();
-    const box = document.getElementById("fx_error_box");
-    if(box) box.style.display = "none";
-  }catch(err){
-    state.fxLoading = false;
-    updateFxBadge(false, true);
-    const box = document.getElementById("fx_error_box");
-    if(box) box.style.display = "block";
-    console.error(err);
+  let lastErr = "";
+  for(const src of FX_SOURCES){
+    try{
+      const resp = await fetch(src.url);
+      if(!resp.ok){ lastErr=`${src.name} HTTP ${resp.status}`; continue; }
+      const data = await resp.json();
+      const parsed = src.parse(data);
+      if(!parsed.rates||!parsed.rates.TWD){ lastErr=`${src.name} 無TWD資料`; continue; }
+      state.fxRates = { rates:parsed.rates, date:parsed.date, source:src.name, manual:false };
+      state.fxLoading = false;
+      updateFxBadge(true);
+      renderFxQuickTable(); recalcFx();
+      const box=document.getElementById("fx_error_box");
+      if(box) box.style.display="none";
+      return;
+    }catch(e){ lastErr=`${src.name}: ${e.message||e}`; }
   }
+  state.fxLoading = false;
+  updateFxBadge(false, true);
+  const box=document.getElementById("fx_error_box");
+  const det=document.getElementById("fx_error_detail");
+  if(box) box.style.display="block";
+  if(det) det.textContent=lastErr;
 }
 
 function updateFxBadge(success, failed){
-  const dot = document.getElementById("fxDot");
-  const txt = document.getElementById("fxBadgeText");
-  const dotM = document.getElementById("fxDotMobile");
-  const txtM = document.getElementById("fxBadgeTextMobile");
-
-  let dotClass, message;
-  if(state.fxLoading){
-    dotClass = "live-dot off";
-    message = "匯率載入中…";
-  }else if(failed){
-    dotClass = "live-dot off";
-    message = "抓取失敗，請見說明";
-  }else if(state.fxRates?.manual){
-    dotClass = "live-dot off";
-    message = "手動輸入匯率";
-  }else{
-    dotClass = "live-dot";
-    message = `已連線 · ${state.fxRates?.date || ""}`;
-  }
-
-  if(dot) dot.className = dotClass;
-  if(txt) txt.textContent = message;
-  if(dotM) dotM.className = dotClass;
-  if(txtM) txtM.textContent = message;
+  const els = [
+    [document.getElementById("fxDot"), document.getElementById("fxBadgeText")],
+    [document.getElementById("fxDotMobile"), document.getElementById("fxBadgeTextMobile")],
+  ];
+  let cls, msg;
+  if(state.fxLoading){ cls="live-dot off"; msg="匯率載入中…"; }
+  else if(failed){ cls="live-dot off"; msg="抓取失敗，請見說明"; }
+  else if(state.fxRates?.manual){ cls="live-dot off"; msg="手動輸入匯率"; }
+  else{ cls="live-dot"; msg=`已連線(${state.fxRates?.source}) · ${state.fxRates?.date||""}`; }
+  els.forEach(([dot,txt])=>{ if(dot)dot.className=cls; if(txt)txt.textContent=msg; });
 }
 
 function convertFx(amount, from, to){
   if(!state.fxRates) return null;
-  const r = state.fxRates.rates;
-  if(r[from]===undefined || r[to]===undefined) return null;
-  // rates are per 1 USD; amount_from -> USD -> to
-  const usdAmount = amount / r[from];
-  return usdAmount * r[to];
+  const r=state.fxRates.rates;
+  if(r[from]===undefined||r[to]===undefined) return null;
+  return (amount/r[from])*r[to];
 }
-
 function recalcFx(){
-  const amount = parseFloat($("#fx_amount").value);
-  const from = $("#fx_from").value;
-  const to = $("#fx_to").value;
-  $("#fx_result_label").textContent = `${amount||0} ${from} ＝`;
-  if(!state.fxRates || isNaN(amount)){
-    $("#fx_result").textContent="—"; $("#fx_rate_line").textContent="—"; $("#fx_ts").textContent="—";
-    return;
+  const amount=parseFloat($("#fx_amount").value);
+  const from=$("#fx_from").value, to=$("#fx_to").value;
+  $("#fx_result_label").textContent=`${amount||0} ${from} ＝`;
+  if(!state.fxRates||isNaN(amount)){
+    $("#fx_result").textContent="—";$("#fx_rate_line").textContent="—";$("#fx_ts").textContent="—"; return;
   }
-  const result = convertFx(amount, from, to);
-  const unitRate = convertFx(1, from, to);
-  $("#fx_result").textContent = fmt(result) + " " + to;
-  $("#fx_rate_line").textContent = `1 ${from} ＝ ${fmtFull(unitRate,4)} ${to}`;
-  $("#fx_ts").textContent = state.fxRates.date;
+  $("#fx_result").textContent=fmt(convertFx(amount,from,to))+" "+to;
+  $("#fx_rate_line").textContent=`1 ${from} ＝ ${fmtFull(convertFx(1,from,to),4)} ${to}`;
+  $("#fx_ts").textContent=`${state.fxRates.source||""} · ${state.fxRates.date||""}`;
 }
-
 function renderFxQuickTable(){
-  const tbody = $("#fx_quick_table tbody");
-  if(!state.fxRates){ return; }
-  const r = state.fxRates.rates;
-  const twd = r["TWD"];
-  if(!twd){ tbody.innerHTML = `<tr><td colspan="3">無 TWD 資料</td></tr>`; return; }
-  const rows = FX_COMMON.filter(c=>c!=="TWD").map(c=>{
-    if(r[c]===undefined) return "";
-    const perUnit = twd / r[c]; // 1 unit of c -> how many TWD
-    const per1000 = perUnit*1000;
-    return `<tr><td class="label-cell">${c}</td><td>${fmtFull(perUnit,4)}</td><td>${fmt(per1000)} 元</td></tr>`;
+  const tbody=$("#fx_quick_table tbody");
+  if(!state.fxRates) return;
+  const r=state.fxRates.rates, twd=r["TWD"];
+  if(!twd){ tbody.innerHTML=`<tr><td colspan="3">無TWD資料</td></tr>`; return; }
+  tbody.innerHTML=FX_COMMON.filter(c=>c!=="TWD").map(c=>{
+    if(!r[c]) return "";
+    const rate=twd/r[c];
+    return `<tr><td class="label-cell">${c}</td><td>${fmtFull(rate,4)}</td><td>${fmt(rate*1000)} 元</td></tr>`;
   }).join("");
-  tbody.innerHTML = rows || `<tr><td colspan="3">無資料</td></tr>`;
 }
-
 function wireFxPanel(){
   $("#fx_amount").addEventListener("input", recalcFx);
   $("#fx_from").addEventListener("change", recalcFx);
   $("#fx_to").addEventListener("change", recalcFx);
-  $("#fx_from").value = "USD";
-  $("#fx_to").value = "TWD";
-  $("#fx_swap").addEventListener("click", ()=>{
-    const f = $("#fx_from").value, t = $("#fx_to").value;
-    $("#fx_from").value = t; $("#fx_to").value = f;
-    recalcFx();
+  $("#fx_from").value="USD"; $("#fx_to").value="TWD";
+  $("#fx_swap").addEventListener("click",()=>{
+    const f=$("#fx_from").value, t=$("#fx_to").value;
+    $("#fx_from").value=t; $("#fx_to").value=f; recalcFx();
   });
   $("#fx_refresh").addEventListener("click", fetchFxRates);
-
-  $("#fx_manual_apply").addEventListener("click", ()=>{
-    const manualRate = parseFloat($("#fx_manual_rate").value);
-    if(isNaN(manualRate) || manualRate<=0){
-      alert("請輸入有效的匯率數字（例如 31.5）。");
-      return;
-    }
-    // 建立一個只含 USD / TWD 的手動匯率表（其餘幣別無法手動換算）
-    state.fxRates = { base:"USD", rates:{ USD:1, TWD:manualRate }, date:"手動輸入", manual:true };
-    updateFxBadge();
-    renderFxQuickTable();
-    recalcFx();
+  $("#fx_manual_apply").addEventListener("click",()=>{
+    const v=parseFloat($("#fx_manual_rate").value);
+    if(isNaN(v)||v<=0){ alert("請輸入有效匯率"); return; }
+    state.fxRates={ rates:{USD:1, TWD:v}, date:"手動輸入", source:"手動", manual:true };
+    updateFxBadge(); renderFxQuickTable(); recalcFx();
+    const box=document.getElementById("fx_error_box");
+    if(box) box.style.display="none";
   });
 }
 
 /* =========================================================
-   3. 百分比計算器（三合一）
+   3. 百分比計算器
    ========================================================= */
 function percentPanelHTML(){
   return `
-    <div class="panel-head">
-      <h2>百分比計算器</h2>
-      <p>三種常用情境：取百分比、求佔比、算變化幅度。</p>
-    </div>
-
+    <div class="panel-head"><h2>百分比計算器</h2><p>三種常用情境：取百分比、求佔比、算變化幅度。</p></div>
     <div class="card">
       <div class="card-title"><span class="dot"></span>a. 計算某數值的百分之多少</div>
-      <div class="formula-tag">
-        <span class="fname">公式</span><br>
-        結果 ＝ 數值 × (百分比 ÷ 100)
-      </div>
+      <div class="formula-tag"><span class="fname">公式</span><br>結果 ＝ 數值 × (百分比 ÷ 100)</div>
       <div class="grid grid-2">
-        <div class="field">
-          <label>數值</label>
-          <input type="number" id="p1_value" placeholder="例如 1500">
-        </div>
-        <div class="field">
-          <label>百分比（%）</label>
-          <input type="number" id="p1_percent" placeholder="例如 20">
-        </div>
+        <div class="field"><label>數值</label><input type="number" id="p1_value" placeholder="例如 1500"></div>
+        <div class="field"><label>百分比（%）</label><input type="number" id="p1_percent" placeholder="例如 20"></div>
       </div>
-      <div class="result-box">
-        <div class="result-row"><span class="rlabel" id="p1_label">結果</span><span class="rvalue big" id="p1_result">—</span></div>
-      </div>
+      <div class="result-box"><div class="result-row"><span class="rlabel" id="p1_label">結果</span><span class="rvalue big" id="p1_result">—</span></div></div>
     </div>
-
     <div class="card">
       <div class="card-title"><span class="dot"></span>b. 計算 A 是 B 的百分之多少</div>
-      <div class="formula-tag">
-        <span class="fname">公式</span><br>
-        A 佔 B 之百分比 ＝ (A ÷ B) × 100%
-      </div>
+      <div class="formula-tag"><span class="fname">公式</span><br>A 佔 B 之百分比 ＝ (A ÷ B) × 100%</div>
       <div class="grid grid-2">
-        <div class="field">
-          <label>數值 A</label>
-          <input type="number" id="p2_a" placeholder="例如 300">
-        </div>
-        <div class="field">
-          <label>數值 B（基準）</label>
-          <input type="number" id="p2_b" placeholder="例如 1200">
-        </div>
+        <div class="field"><label>數值 A</label><input type="number" id="p2_a" placeholder="例如 300"></div>
+        <div class="field"><label>數值 B（基準）</label><input type="number" id="p2_b" placeholder="例如 1200"></div>
       </div>
-      <div class="result-box">
-        <div class="result-row"><span class="rlabel" id="p2_label">A 佔 B 的比例</span><span class="rvalue big" id="p2_result">—</span></div>
-      </div>
+      <div class="result-box"><div class="result-row"><span class="rlabel" id="p2_label">A 佔 B 的比例</span><span class="rvalue big" id="p2_result">—</span></div></div>
     </div>
-
     <div class="card">
-      <div class="card-title"><span class="dot"></span>c. 計算數值的變化百分比（增加 / 減少）</div>
-      <div class="formula-tag">
-        <span class="fname">公式</span><br>
-        變化百分比 ＝ (新數值－原數值) ÷ 原數值 × 100%
-      </div>
+      <div class="card-title"><span class="dot"></span>c. 計算數值的變化百分比</div>
+      <div class="formula-tag"><span class="fname">公式</span><br>變化百分比 ＝ (新數值－原數值) ÷ 原數值 × 100%</div>
       <div class="grid grid-2">
-        <div class="field">
-          <label>原數值</label>
-          <input type="number" id="p3_old" placeholder="例如 200">
-        </div>
-        <div class="field">
-          <label>新數值</label>
-          <input type="number" id="p3_new" placeholder="例如 250">
-        </div>
+        <div class="field"><label>原數值</label><input type="number" id="p3_old" placeholder="例如 200"></div>
+        <div class="field"><label>新數值</label><input type="number" id="p3_new" placeholder="例如 250"></div>
       </div>
       <div class="result-box">
         <div class="result-row"><span class="rlabel">差額</span><span class="rvalue" id="p3_diff">—</span></div>
         <div class="result-row"><span class="rlabel" id="p3_label">變化百分比</span><span class="rvalue big" id="p3_result">—</span></div>
       </div>
-    </div>
-  `;
+    </div>`;
 }
-
 function wirePercentPanel(){
   const v1=$("#p1_value"), pc1=$("#p1_percent");
-  function c1(){
-    const v=parseFloat(v1.value), p=parseFloat(pc1.value);
-    $("#p1_label").textContent = (isNaN(v)||isNaN(p)) ? "結果" : `${v} 的 ${p}%`;
-    if(isNaN(v)||isNaN(p)){ $("#p1_result").textContent="—"; return; }
-    $("#p1_result").textContent = fmt(v*(p/100));
-  }
+  function c1(){ const v=parseFloat(v1.value),p=parseFloat(pc1.value); $("#p1_label").textContent=(isNaN(v)||isNaN(p))?"結果":`${v} 的 ${p}%`; if(isNaN(v)||isNaN(p)){$("#p1_result").textContent="—";return;} $("#p1_result").textContent=fmt(v*(p/100)); }
   [v1,pc1].forEach(el=>el.addEventListener("input",c1));
-
   const a=$("#p2_a"), b=$("#p2_b");
-  function c2(){
-    const av=parseFloat(a.value), bv=parseFloat(b.value);
-    if(isNaN(av)||isNaN(bv)||bv===0){ $("#p2_result").textContent="—"; return; }
-    $("#p2_label").textContent = `${av} 佔 ${bv} 的比例`;
-    $("#p2_result").textContent = fmt((av/bv)*100)+" %";
-  }
+  function c2(){ const av=parseFloat(a.value),bv=parseFloat(b.value); if(isNaN(av)||isNaN(bv)||bv===0){$("#p2_result").textContent="—";return;} $("#p2_label").textContent=`${av} 佔 ${bv} 的比例`; $("#p2_result").textContent=fmt((av/bv)*100)+" %"; }
   [a,b].forEach(el=>el.addEventListener("input",c2));
-
   const o=$("#p3_old"), n=$("#p3_new");
-  function c3(){
-    const ov=parseFloat(o.value), nv=parseFloat(n.value);
-    if(isNaN(ov)||isNaN(nv)||ov===0){
-      $("#p3_diff").textContent="—"; $("#p3_result").textContent="—"; $("#p3_label").textContent="變化百分比";
-      return;
-    }
-    const diff = nv-ov;
-    const pct = (diff/ov)*100;
-    $("#p3_diff").textContent = (diff>=0?"+":"")+fmt(diff);
-    $("#p3_label").textContent = diff>=0 ? "增加百分比" : "減少百分比";
-    $("#p3_result").textContent = (pct>=0?"+":"")+fmt(pct)+" %";
-  }
+  function c3(){ const ov=parseFloat(o.value),nv=parseFloat(n.value); if(isNaN(ov)||isNaN(nv)||ov===0){$("#p3_diff").textContent="—";$("#p3_result").textContent="—";return;} const diff=nv-ov,pct=(diff/ov)*100; $("#p3_diff").textContent=(diff>=0?"+":"")+fmt(diff); $("#p3_label").textContent=diff>=0?"增加百分比":"減少百分比"; $("#p3_result").textContent=(pct>=0?"+":"")+fmt(pct)+" %"; }
   [o,n].forEach(el=>el.addEventListener("input",c3));
 }
 
 /* =========================================================
-   4. 白蝦規格換算器（Count Conversion）
-   規格 = 每公斤尾數區間，例如 16/20 代表每公斤 16~20 尾
-   每隻重量區間：最重(g) = 1000/下限尾數 ；最輕(g) = 1000/上限尾數
-   給定下盤重 W(g)：尾數區間 = [W×下限尾數/1000 , W×上限尾數/1000]
-   （不四捨五入）
+   4. 白蝦規格換算器
    ========================================================= */
 const SHRIMP_SPECS = [
-  {min:16,max:20},
-  {min:21,max:25},
-  {min:26,max:30},
-  {min:31,max:35},
-  {min:30,max:40},
-  {min:40,max:50},
-  {min:50,max:60},
-  {min:60,max:70},
-  {min:70,max:80},
-  {min:80,max:100},
+  {min:16,max:20},{min:21,max:25},{min:26,max:30},{min:31,max:35},
+  {min:30,max:40},{min:40,max:50},{min:50,max:60},{min:60,max:70},
+  {min:70,max:80},{min:80,max:100},
 ];
-
-function perShrimpWeightRange(min,max){
-  // min尾(較少) -> 每隻較重；max尾(較多) -> 每隻較輕
-  const heaviest = 1000/min;
-  const lightest = 1000/max;
-  return { lightest, heaviest }; // lightest < heaviest
-}
-
-function countRangeForWeight(min,max,weightG){
-  const countLow = weightG*min/1000;   // 對應較重的隻 -> 隻數較少
-  const countHigh = weightG*max/1000;  // 對應較輕的隻 -> 隻數較多
-  return { countLow, countHigh };
-}
-
 function specPanelHTML(){
   const rows = SHRIMP_SPECS.map(s=>{
-    const {lightest,heaviest} = perShrimpWeightRange(s.min,s.max);
-    return `<tr>
-      <td class="label-cell">${s.min}/${s.max}</td>
-      <td>${s.min} – ${s.max} 尾</td>
-      <td>${fmtFull(lightest,1)} – ${fmtFull(heaviest,1)} g</td>
-    </tr>`;
+    const heavy=(1000/s.min).toFixed(1), light=(1000/s.max).toFixed(1);
+    return `<tr><td class="label-cell">${s.min}/${s.max}</td><td>${s.min}–${s.max} 尾</td><td>${light}–${heavy} g</td></tr>`;
   }).join("");
-
-  const specOptions = SHRIMP_SPECS.map(s=>`<option value="${s.min}-${s.max}">${s.min}/${s.max}（每公斤 ${s.min}-${s.max} 尾）</option>`).join("");
-
+  const opts = SHRIMP_SPECS.map(s=>`<option value="${s.min}-${s.max}">${s.min}/${s.max}（每公斤 ${s.min}-${s.max} 尾）</option>`).join("");
   return `
-    <div class="panel-head">
-      <h2>白蝦規格換算器（Count Conversion）</h2>
-      <p>規格代表「每公斤尾數區間」。已知下盤重量，反推尾數區間；不四捨五入，由你自行評估進位方式。</p>
-    </div>
-
+    <div class="panel-head"><h2>白蝦規格換算器</h2><p>規格代表每公斤尾數區間，輸入下盤重量，反推尾數區間（不四捨五入）。</p></div>
     <div class="card">
       <div class="card-title"><span class="dot"></span>固定規格對照表</div>
-      <div class="formula-tag">
-        <span class="fname">公式</span><br>
-        每隻重量上限(較重) ＝ 1000g ÷ 下限尾數　／　每隻重量下限(較輕) ＝ 1000g ÷ 上限尾數
-      </div>
-      <div class="table-wrap">
-        <table class="spec-table">
-          <thead><tr><th>規格</th><th>每公斤尾數</th><th>每隻重量區間</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
+      <div class="formula-tag"><span class="fname">公式</span><br>每隻重量上限 ＝ 1000g ÷ 下限尾數　／　每隻重量下限 ＝ 1000g ÷ 上限尾數</div>
+      <div class="table-wrap"><table class="spec-table"><thead><tr><th>規格</th><th>每公斤尾數</th><th>每隻重量區間</th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>
-
     <div class="card">
-      <div class="card-title"><span class="dot"></span>換算工具：用下盤重量反推尾數區間</div>
-      <div class="formula-tag">
-        <span class="fname">公式</span><br>
-        尾數下限 ＝ 下盤重(g) × 每公斤尾數下限 ÷ 1000<br>
-        尾數上限 ＝ 下盤重(g) × 每公斤尾數上限 ÷ 1000
-      </div>
-
+      <div class="card-title"><span class="dot"></span>換算工具：下盤重量 → 尾數區間</div>
+      <div class="formula-tag"><span class="fname">公式</span><br>尾數下限 ＝ 下盤重(g) × 每公斤下限尾數 ÷ 1000<br>尾數上限 ＝ 下盤重(g) × 每公斤上限尾數 ÷ 1000</div>
       <div class="sub-tabs">
-        <button class="sub-tab-btn active" data-sub="preset">選擇固定規格</button>
-        <button class="sub-tab-btn" data-sub="custom">自訂每公斤尾數</button>
+        <button class="sub-tab-btn active" data-sub="preset">固定規格</button>
+        <button class="sub-tab-btn" data-sub="custom">自訂尾數</button>
       </div>
-
       <div class="sub-panel active" id="sub-preset">
         <div class="grid grid-2">
-          <div class="field">
-            <label>選擇規格</label>
-            <select id="s_preset_select">${specOptions}</select>
-          </div>
-          <div class="field">
-            <label>目前下盤重量（g）</label>
-            <input type="number" id="s_preset_weight" placeholder="例如 600" value="600">
-          </div>
+          <div class="field"><label>選擇規格</label><select id="s_preset_select">${opts}</select></div>
+          <div class="field"><label>下盤重量（g）</label><input type="number" id="s_preset_weight" placeholder="例如 600" value="600"></div>
         </div>
       </div>
-
       <div class="sub-panel" id="sub-custom">
         <div class="grid grid-3">
-          <div class="field">
-            <label>每公斤尾數下限</label>
-            <input type="number" id="s_custom_min" placeholder="例如 16">
-          </div>
-          <div class="field">
-            <label>每公斤尾數上限</label>
-            <input type="number" id="s_custom_max" placeholder="例如 20">
-          </div>
-          <div class="field">
-            <label>目前下盤重量（g）</label>
-            <input type="number" id="s_custom_weight" placeholder="例如 600">
-          </div>
+          <div class="field"><label>每公斤尾數下限</label><input type="number" id="s_custom_min" placeholder="例如 16"></div>
+          <div class="field"><label>每公斤尾數上限</label><input type="number" id="s_custom_max" placeholder="例如 20"></div>
+          <div class="field"><label>下盤重量（g）</label><input type="number" id="s_custom_weight" placeholder="例如 600"></div>
         </div>
       </div>
-
-      <div class="result-box" id="s_result">
+      <div class="result-box" style="margin-top:14px;">
         <div class="result-row"><span class="rlabel">每隻重量區間（依規格）</span><span class="rvalue" id="s_perweight">—</span></div>
         <div class="result-row"><span class="rlabel">換算尾數區間（不四捨五入）</span><span class="rvalue big" id="s_countrange">—</span></div>
       </div>
-
-      <p class="note-line">小提醒：尾數越少代表單隻越重（蝦體越大），尾數越多代表單隻越輕（蝦體越小）。</p>
-    </div>
-  `;
+      <p class="note-line">尾數越少=單隻越重（蝦體越大）；尾數越多=單隻越輕（蝦體越小）。</p>
+    </div>`;
 }
-
-function calcSpecResult(min,max,weight){
-  if(isNaN(min)||isNaN(max)||isNaN(weight)||min<=0||max<=0){
-    $("#s_perweight").textContent="—";
-    $("#s_countrange").textContent="—";
-    return;
-  }
-  const {lightest,heaviest} = perShrimpWeightRange(min,max);
-  const {countLow,countHigh} = countRangeForWeight(min,max,weight);
-  $("#s_perweight").textContent = `${fmtFull(lightest,1)} – ${fmtFull(heaviest,1)} g / 隻`;
-  $("#s_countrange").textContent = `${fmtFull(countLow,4)} – ${fmtFull(countHigh,4)} 尾`;
-}
-
 function wireSpecPanel(){
-  $all(".sub-tab-btn", document.getElementById("panel-spec")).forEach(btn=>{
-    btn.addEventListener("click", ()=>{
-      $all(".sub-tab-btn", document.getElementById("panel-spec")).forEach(b=>b.classList.toggle("active", b===btn));
-      const target = btn.dataset.sub;
-      $all(".sub-panel", document.getElementById("panel-spec")).forEach(p=>{
-        p.classList.toggle("active", p.id === "sub-"+target);
-      });
-      runSpecCalc();
+  const panel = document.getElementById("panel-spec");
+  $all(".sub-tab-btn", panel).forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      $all(".sub-tab-btn",panel).forEach(b=>b.classList.toggle("active",b===btn));
+      $all(".sub-panel",panel).forEach(p=>p.classList.toggle("active",p.id==="sub-"+btn.dataset.sub));
+      runSpec();
     });
   });
-
-  function runSpecCalc(){
-    const activeSub = $(".sub-tab-btn.active", document.getElementById("panel-spec")).dataset.sub;
+  function calcSpec(min,max,w){
+    if(isNaN(min)||isNaN(max)||isNaN(w)||min<=0||max<=0){$("#s_perweight").textContent="—";$("#s_countrange").textContent="—";return;}
+    const heavy=(1000/min).toFixed(1), light=(1000/max).toFixed(1);
+    const lo=(w*min/1000).toFixed(4), hi=(w*max/1000).toFixed(4);
+    $("#s_perweight").textContent=`${light}–${heavy} g / 隻`;
+    $("#s_countrange").textContent=`${lo}–${hi} 尾`;
+  }
+  function runSpec(){
+    const activeSub=$(".sub-tab-btn.active",panel).dataset.sub;
     if(activeSub==="preset"){
-      const [min,max] = $("#s_preset_select").value.split("-").map(Number);
-      const weight = parseFloat($("#s_preset_weight").value);
-      calcSpecResult(min,max,weight);
+      const [min,max]=$("#s_preset_select").value.split("-").map(Number);
+      calcSpec(min,max,parseFloat($("#s_preset_weight").value));
     }else{
-      const min = parseFloat($("#s_custom_min").value);
-      const max = parseFloat($("#s_custom_max").value);
-      const weight = parseFloat($("#s_custom_weight").value);
-      calcSpecResult(min,max,weight);
+      calcSpec(parseFloat($("#s_custom_min").value),parseFloat($("#s_custom_max").value),parseFloat($("#s_custom_weight").value));
     }
   }
-
-  ["#s_preset_select","#s_preset_weight"].forEach(sel=>$(sel).addEventListener("input", runSpecCalc));
-  $("#s_preset_select").addEventListener("change", runSpecCalc);
-  ["#s_custom_min","#s_custom_max","#s_custom_weight"].forEach(sel=>$(sel).addEventListener("input", runSpecCalc));
-
-  runSpecCalc();
+  ["#s_preset_select","#s_preset_weight"].forEach(s=>$(s).addEventListener("input",runSpec));
+  $("#s_preset_select").addEventListener("change",runSpec);
+  ["#s_custom_min","#s_custom_max","#s_custom_weight"].forEach(s=>$(s).addEventListener("input",runSpec));
+  runSpec();
 }
 
 /* =========================================================
-   5. 白蝦採購成本計算器 ＋ 毛利計算器（同頁）
-   台幣成本 = [(美金成本 × 1.0045 × 關稅(15% or 20%) × 匯率) + 3] × 1.05
+   5. 採購成本計算器 + 毛利
    ========================================================= */
 function costPanelHTML(){
   return `
-    <div class="panel-head">
-      <h2>白蝦採購成本計算器</h2>
-      <p>美金採購價換算台幣成本，並可直接接續算毛利率。</p>
-    </div>
-
+    <div class="panel-head"><h2>白蝦採購成本計算器</h2><p>美金採購價換算台幣成本，並可直接接續算毛利率。</p></div>
     <div class="card">
       <div class="card-title"><span class="dot"></span>美金成本 → 台幣成本</div>
-      <div class="formula-tag">
-        <span class="fname">公式</span><br>
-        台幣成本 ＝ [（美金成本 × 1.0045 × (1＋關稅率) × 匯率） ＋ 3] × 1.05　<span style="color:#8AA0A4">（1.05 為營業稅）</span>
-      </div>
+      <div class="formula-tag"><span class="fname">公式</span><br>台幣成本 ＝ [（美金成本 × 1.0045 × (1＋關稅率) × 匯率） ＋ 3] × 1.05　<span style="color:#8AA0A4">（1.0045=港務稅捐，1.05=營業稅）</span></div>
       <div class="grid grid-2">
-        <div class="field">
-          <label>美金採購成本（USD / 單位）</label>
-          <input type="number" id="c_usd" placeholder="例如 30" step="0.01">
-        </div>
-        <div class="field">
-          <label>匯率（USD → TWD，自行輸入）</label>
-          <input type="number" id="c_fxrate" placeholder="例如 31.5" step="0.0001">
-          <span class="hint" id="c_fx_hint">可參考「匯率換算器」分頁的即時匯率</span>
-        </div>
+        <div class="field"><label>美金採購成本（USD / 單位）</label><input type="number" id="c_usd" placeholder="例如 30" step="0.01"></div>
+        <div class="field"><label>匯率（USD → TWD）</label><input type="number" id="c_fxrate" placeholder="例如 31.5" step="0.0001"><span class="hint" id="c_fx_hint">可參考「匯率換算器」分頁的即時匯率</span></div>
       </div>
-      <div class="field" style="margin-top:4px;">
-        <label>關稅率</label>
+      <div class="field" style="margin-top:4px;"><label>關稅率</label>
         <div class="radio-row">
           <label class="radio-chip" id="c_tariff15_wrap"><input type="radio" name="c_tariff" id="c_tariff15" value="0.15" checked>15%</label>
           <label class="radio-chip" id="c_tariff20_wrap"><input type="radio" name="c_tariff" id="c_tariff20" value="0.20">20%</label>
         </div>
       </div>
-      <div style="margin-top:6px;">
-        <button class="ghost-btn" id="c_use_fx">套用即時匯率</button>
-      </div>
-
+      <div style="margin-top:6px;"><button class="ghost-btn" id="c_use_fx">套用即時匯率</button></div>
       <div class="result-box" style="margin-top:16px;">
-        <div class="result-row"><span class="rlabel">含關稅成本（美金成本×1.0045×(1+關稅率)×匯率）</span><span class="rvalue muted" id="c_step1">—</span></div>
-        <div class="result-row"><span class="rlabel">＋固定費用 3 元後</span><span class="rvalue muted" id="c_step2">—</span></div>
-        <div class="result-row"><span class="rlabel">台幣成本（含營業稅）</span><span class="rvalue big" id="c_final">—</span></div>
+        <div class="result-row"><span class="rlabel">含關稅成本（×1.0045×(1+關稅)×匯率）</span><span class="rvalue muted" id="c_step1">—</span></div>
+        <div class="result-row"><span class="rlabel">＋固定費用 3 元</span><span class="rvalue muted" id="c_step2">—</span></div>
+        <div class="result-row"><span class="rlabel">台幣成本（含營業稅 1.05）</span><span class="rvalue big" id="c_final">—</span></div>
       </div>
     </div>
-
     <div class="card">
       <div class="card-title"><span class="dot"></span>接續：毛利計算器</div>
-      <div class="formula-tag">
-        <span class="fname">公式</span><br>
-        毛利率 (%) ＝ (售價－成本) ÷ 售價 × 100%　<span style="color:#8AA0A4">（成本自動套用左方算出的台幣成本，亦可手動覆寫）</span>
-      </div>
+      <div class="formula-tag"><span class="fname">公式</span><br>毛利率 (%) ＝ (售價－成本) ÷ 售價 × 100%　<span style="color:#8AA0A4">（成本自動帶入，可手動覆寫）</span></div>
       <div class="grid grid-2">
-        <div class="field">
-          <label>成本（台幣 / 單位）<span class="hint">自動帶入，可手動修改</span></label>
-          <input type="number" id="c_cost_for_margin" placeholder="自動帶入台幣成本" step="0.01">
-        </div>
-        <div class="field">
-          <label>預計售價（台幣 / 單位）</label>
-          <input type="number" id="c_price" placeholder="例如 1300" step="0.01">
-        </div>
+        <div class="field"><label>成本（台幣）<span class="hint">自動帶入，可手動修改</span></label><input type="number" id="c_cost_for_margin" placeholder="自動帶入台幣成本" step="0.01"></div>
+        <div class="field"><label>預計售價（台幣）</label><input type="number" id="c_price" placeholder="例如 1300" step="0.01"></div>
       </div>
-      <div style="margin-top:6px;">
-        <button class="ghost-btn" id="c_reset_auto">重新自動套用台幣成本</button>
-      </div>
+      <div style="margin-top:6px;"><button class="ghost-btn" id="c_reset_auto">重新自動套用台幣成本</button></div>
       <div class="result-box" style="margin-top:16px;">
         <div class="result-row"><span class="rlabel">毛利金額</span><span class="rvalue" id="c_margin_profit">—</span></div>
         <div class="result-row"><span class="rlabel">毛利率</span><span class="rvalue big" id="c_margin_rate">—</span></div>
       </div>
-    </div>
-  `;
+    </div>`;
 }
-
 function wireCostPanel(){
-  const usd=$("#c_usd"), fxr=$("#c_fxrate"), price=$("#c_price"), costForMargin=$("#c_cost_for_margin");
-  let costManuallyEdited = false;
-
-  function getTariff(){
-    return parseFloat(document.querySelector('input[name="c_tariff"]:checked').value);
+  const usd=$("#c_usd"), fxr=$("#c_fxrate"), price=$("#c_price"), cfm=$("#c_cost_for_margin");
+  let manualEdit=false;
+  function getTariff(){ return parseFloat(document.querySelector('input[name="c_tariff"]:checked').value); }
+  function updateChips(){
+    document.getElementById("c_tariff15_wrap").classList.toggle("checked",document.getElementById("c_tariff15").checked);
+    document.getElementById("c_tariff20_wrap").classList.toggle("checked",document.getElementById("c_tariff20").checked);
   }
-  function updateTariffChips(){
-    document.getElementById("c_tariff15_wrap").classList.toggle("checked", document.getElementById("c_tariff15").checked);
-    document.getElementById("c_tariff20_wrap").classList.toggle("checked", document.getElementById("c_tariff20").checked);
-  }
-  $all('input[name="c_tariff"]').forEach(r=>r.addEventListener("change", ()=>{updateTariffChips(); calcCost();}));
-  updateTariffChips();
-
+  $all('input[name="c_tariff"]').forEach(r=>r.addEventListener("change",()=>{updateChips();calcCost();}));
+  updateChips();
   function calcCost(){
-    const u = parseFloat(usd.value), fx = parseFloat(fxr.value), tariff = getTariff();
-    if(isNaN(u)||isNaN(fx)){
-      $("#c_step1").textContent="—"; $("#c_step2").textContent="—"; $("#c_final").textContent="—";
-      return;
-    }
-    const step1 = u * 1.0045 * (1+tariff) * fx;
-    const step2 = step1 + 3;
-    const final = step2 * 1.05;
-    $("#c_step1").textContent = fmt(step1) + " 元";
-    $("#c_step2").textContent = fmt(step2) + " 元";
-    $("#c_final").textContent = fmt(final) + " 元";
-
-    // 自動帶入毛利計算器，除非使用者手動改過成本欄位
-    if(!costManuallyEdited){
-      costForMargin.value = final.toFixed(2);
-      calcMargin();
-    }
+    const u=parseFloat(usd.value), fx=parseFloat(fxr.value), t=getTariff();
+    if(isNaN(u)||isNaN(fx)){$("#c_step1").textContent="—";$("#c_step2").textContent="—";$("#c_final").textContent="—";return;}
+    const s1=u*1.0045*(1+t)*fx, s2=s1+3, fin=s2*1.05;
+    $("#c_step1").textContent=fmt(s1)+" 元";
+    $("#c_step2").textContent=fmt(s2)+" 元";
+    $("#c_final").textContent=fmt(fin)+" 元";
+    if(!manualEdit){ cfm.value=fin.toFixed(2); calcMargin(); }
   }
-  [usd,fxr].forEach(el=>el.addEventListener("input", calcCost));
+  [usd,fxr].forEach(el=>el.addEventListener("input",calcCost));
   calcCost();
-
-  $("#c_use_fx").addEventListener("click", ()=>{
-    if(state.fxRates && state.fxRates.rates["TWD"]){
-      fxr.value = fmtFull(state.fxRates.rates["TWD"], 4);
-      calcCost();
-    }else{
-      alert("即時匯率尚未載入，請稍候或切到匯率換算器分頁重新抓取。");
-    }
+  $("#c_use_fx").addEventListener("click",()=>{
+    if(state.fxRates?.rates?.TWD){ fxr.value=fmtFull(state.fxRates.rates.TWD,4); calcCost(); }
+    else alert("即時匯率尚未載入，請切至匯率換算器分頁重新抓取。");
   });
-
   function calcMargin(){
-    const c = parseFloat(costForMargin.value), p = parseFloat(price.value);
-    if(isNaN(c)||isNaN(p)||p===0){
-      $("#c_margin_profit").textContent="—"; $("#c_margin_rate").textContent="—";
-      return;
-    }
-    const profit = p-c;
-    $("#c_margin_profit").textContent = fmt(profit)+" 元";
-    $("#c_margin_rate").textContent = fmt((profit/p)*100)+" %";
+    const c=parseFloat(cfm.value), p=parseFloat(price.value);
+    if(isNaN(c)||isNaN(p)||p===0){$("#c_margin_profit").textContent="—";$("#c_margin_rate").textContent="—";return;}
+    $("#c_margin_profit").textContent=fmt(p-c)+" 元";
+    $("#c_margin_rate").textContent=fmt(((p-c)/p)*100)+" %";
   }
-  costForMargin.addEventListener("input", ()=>{ costManuallyEdited = true; calcMargin(); });
-  price.addEventListener("input", calcMargin);
-
-  $("#c_reset_auto").addEventListener("click", ()=>{
-    costManuallyEdited = false;
-    calcCost();
-  });
+  cfm.addEventListener("input",()=>{manualEdit=true;calcMargin();});
+  price.addEventListener("input",calcMargin);
+  $("#c_reset_auto").addEventListener("click",()=>{manualEdit=false;calcCost();});
 }
 
 /* =========================================================
-   6. 包冰率計算器（業務冰 / 工廠冰）
-   業務冰 = 淨重 ÷ 含冰重
-   工廠冰 = (含冰重－淨重) ÷ 含冰重
+   6. 包冰率計算器
    ========================================================= */
 function icePanelHTML(){
   return `
-    <div class="panel-head">
-      <h2>包冰率計算器</h2>
-      <p>業務冰與工廠冰，計算邏輯不同，請依需求分別使用。</p>
-    </div>
-
+    <div class="panel-head"><h2>包冰率計算器</h2><p>業務冰與工廠冰，計算邏輯不同，請依需求分別使用。</p></div>
     <div class="two-col-tools">
       <div class="card">
         <div class="card-title"><span class="dot"></span>業務冰算法</div>
-        <div class="formula-tag">
-          <span class="fname">公式</span><br>
-          業務冰率 ＝ 淨重 ÷ 含冰重
-        </div>
+        <div class="formula-tag"><span class="fname">公式</span><br>業務冰率 ＝ 淨重 ÷ 含冰重</div>
         <div class="grid">
-          <div class="field">
-            <label>淨重（不含冰，g 或 kg 皆可，單位需一致）</label>
-            <input type="number" id="ice_b_net" placeholder="例如 850">
-          </div>
-          <div class="field">
-            <label>含冰重（總重）</label>
-            <input type="number" id="ice_b_gross" placeholder="例如 1000">
-          </div>
+          <div class="field"><label>淨重（不含冰）</label><input type="number" id="ice_b_net" placeholder="例如 850"></div>
+          <div class="field"><label>含冰重（總重）</label><input type="number" id="ice_b_gross" placeholder="例如 1000"></div>
         </div>
         <div class="result-box">
           <div class="result-row"><span class="rlabel">業務冰率</span><span class="rvalue big" id="ice_b_result">—</span></div>
-          <div class="result-row"><span class="rlabel">換算淨肉比例</span><span class="rvalue muted" id="ice_b_pct">—</span></div>
+          <div class="result-row"><span class="rlabel">淨肉比例</span><span class="rvalue muted" id="ice_b_pct">—</span></div>
         </div>
       </div>
-
       <div class="card">
         <div class="card-title"><span class="dot"></span>工廠冰算法</div>
-        <div class="formula-tag">
-          <span class="fname">公式</span><br>
-          工廠冰率 ＝ (含冰重－淨重) ÷ 含冰重
-        </div>
+        <div class="formula-tag"><span class="fname">公式</span><br>工廠冰率 ＝ (含冰重－淨重) ÷ 含冰重</div>
         <div class="grid">
-          <div class="field">
-            <label>含冰重（總重）</label>
-            <input type="number" id="ice_f_gross" placeholder="例如 1000">
-          </div>
-          <div class="field">
-            <label>淨重（不含冰）</label>
-            <input type="number" id="ice_f_net" placeholder="例如 850">
-          </div>
+          <div class="field"><label>含冰重（總重）</label><input type="number" id="ice_f_gross" placeholder="例如 1000"></div>
+          <div class="field"><label>淨重（不含冰）</label><input type="number" id="ice_f_net" placeholder="例如 850"></div>
         </div>
         <div class="result-box">
           <div class="result-row"><span class="rlabel">包冰重量</span><span class="rvalue" id="ice_f_icevalue">—</span></div>
@@ -1374,42 +1073,361 @@ function icePanelHTML(){
         </div>
       </div>
     </div>
-
-    <div class="card">
-      <p class="note-line" style="font-size:0.8rem;">
-        差異說明：業務冰率呈現「淨肉佔總重的比例」（數值越高代表含冰越少）；工廠冰率呈現「冰佔總重的比例」（數值越高代表含冰越多）。兩者計算角度相反，請依公司慣用定義選用對應公式，避免混用造成誤判。
-      </p>
-    </div>
-  `;
+    <div class="card"><p class="note-line" style="font-size:0.8rem;">差異說明：業務冰率＝「淨肉佔總重比例」（數值越高代表含冰越少）；工廠冰率＝「冰佔總重比例」（數值越高代表含冰越多）。兩者角度相反，請依公司慣用定義選用，避免混用。</p></div>`;
 }
-
 function wireIcePanel(){
   const bn=$("#ice_b_net"), bg=$("#ice_b_gross");
-  function calcB(){
-    const net=parseFloat(bn.value), gross=parseFloat(bg.value);
-    if(isNaN(net)||isNaN(gross)||gross===0){
-      $("#ice_b_result").textContent="—"; $("#ice_b_pct").textContent="—";
-      return;
-    }
-    const ratio = net/gross;
-    $("#ice_b_result").textContent = fmtFull(ratio,4);
-    $("#ice_b_pct").textContent = fmt(ratio*100)+" %";
-  }
-  [bn,bg].forEach(el=>el.addEventListener("input",calcB));
-
+  function cB(){ const net=parseFloat(bn.value), gross=parseFloat(bg.value); if(isNaN(net)||isNaN(gross)||gross===0){$("#ice_b_result").textContent="—";$("#ice_b_pct").textContent="—";return;} const r=net/gross; $("#ice_b_result").textContent=fmtFull(r,4); $("#ice_b_pct").textContent=fmt(r*100)+" %"; }
+  [bn,bg].forEach(el=>el.addEventListener("input",cB));
   const fg=$("#ice_f_gross"), fn=$("#ice_f_net");
-  function calcF(){
-    const gross=parseFloat(fg.value), net=parseFloat(fn.value);
-    if(isNaN(gross)||isNaN(net)||gross===0){
-      $("#ice_f_icevalue").textContent="—"; $("#ice_f_result").textContent="—";
+  function cF(){ const gross=parseFloat(fg.value), net=parseFloat(fn.value); if(isNaN(gross)||isNaN(net)||gross===0){$("#ice_f_icevalue").textContent="—";$("#ice_f_result").textContent="—";return;} const ice=gross-net; $("#ice_f_icevalue").textContent=fmt(ice); $("#ice_f_result").textContent=fmt((ice/gross)*100)+" %"; }
+  [fg,fn].forEach(el=>el.addEventListener("input",cF));
+}
+
+/* =========================================================
+   7. 周轉天數計算器
+   公式：（庫存 ÷ 月銷量）× 30 = 周轉天數
+   ========================================================= */
+function turnoverPanelHTML(){
+  return `
+    <div class="panel-head"><h2>庫存周轉天數計算器</h2><p>計算庫存消化完畢需要幾天，協助控管進貨節奏。</p></div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>周轉天數</div>
+      <div class="formula-tag"><span class="fname">公式</span><br>周轉天數 ＝ (庫存 ÷ 月銷量) × 30 天</div>
+      <div class="sub-tabs" id="to_subtabs">
+        <button class="sub-tab-btn active" data-sub="kg">公斤模式（kg）</button>
+        <button class="sub-tab-btn" data-sub="pcs">件數模式（件）</button>
+      </div>
+      <div class="sub-panel active" id="to-kg">
+        <div class="grid grid-2">
+          <div class="field"><label>目前庫存（公斤）</label><input type="number" id="to_stock_kg" placeholder="例如 5000" step="0.1"></div>
+          <div class="field"><label>月銷量（公斤）</label><input type="number" id="to_sales_kg" placeholder="例如 2000" step="0.1"></div>
+        </div>
+      </div>
+      <div class="sub-panel" id="to-pcs">
+        <div class="grid grid-2">
+          <div class="field"><label>目前庫存（件）</label><input type="number" id="to_stock_pcs" placeholder="例如 500"></div>
+          <div class="field"><label>月銷量（件）</label><input type="number" id="to_sales_pcs" placeholder="例如 200"></div>
+        </div>
+      </div>
+      <div class="result-box" style="margin-top:14px;">
+        <div class="result-row"><span class="rlabel">庫存 ÷ 月銷量</span><span class="rvalue muted" id="to_ratio">—</span></div>
+        <div class="result-row"><span class="rlabel">周轉天數</span><span class="rvalue big" id="to_days">—</span></div>
+        <div class="result-row"><span class="rlabel">預計庫存清空日期（今日起算）</span><span class="rvalue" id="to_date">—</span></div>
+      </div>
+      <p class="note-line">周轉天數越短表示庫存周轉越快，一般冷凍水產建議控制在 30–60 天以內，避免積壓或品質風險。</p>
+    </div>`;
+}
+function wireTurnoverPanel(){
+  const panel=document.getElementById("panel-turnover");
+  $all(".sub-tab-btn","#to_subtabs" in window ? document : panel).forEach(btn=>{
+    if(!btn.closest("#panel-turnover")) return;
+    btn.addEventListener("click",()=>{
+      $all(".sub-tab-btn",panel).forEach(b=>b.classList.toggle("active",b===btn));
+      $all(".sub-panel",panel).forEach(p=>p.classList.toggle("active",p.id==="to-"+btn.dataset.sub));
+      calcTurnover();
+    });
+  });
+  function calcTurnover(){
+    const activeSub=$(".sub-tab-btn.active",panel).dataset.sub;
+    const stock = parseFloat(activeSub==="kg" ? $("#to_stock_kg").value : $("#to_stock_pcs").value);
+    const sales = parseFloat(activeSub==="kg" ? $("#to_sales_kg").value : $("#to_sales_pcs").value);
+    if(isNaN(stock)||isNaN(sales)||sales===0){
+      $("#to_ratio").textContent="—"; $("#to_days").textContent="—"; $("#to_date").textContent="—"; return;
+    }
+    const ratio=stock/sales, days=ratio*30;
+    $("#to_ratio").textContent=fmtFull(ratio,2)+" 個月";
+    $("#to_days").textContent=fmt(days)+" 天";
+    const clearDate=new Date(); clearDate.setDate(clearDate.getDate()+Math.round(days));
+    $("#to_date").textContent=`${clearDate.getFullYear()}/${clearDate.getMonth()+1}/${clearDate.getDate()}`;
+  }
+  ["#to_stock_kg","#to_sales_kg","#to_stock_pcs","#to_sales_pcs"].forEach(s=>$(s).addEventListener("input",calcTurnover));
+}
+
+/* =========================================================
+   8. 重量單位換算器
+   ========================================================= */
+function weightPanelHTML(){
+  return `
+    <div class="panel-head"><h2>重量單位換算器</h2><p>常用重量單位即時互換，輸入任一欄位自動換算其他。</p></div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>各單位換算基準（以1公斤為基準）</div>
+      <div class="formula-tag"><span class="fname">換算基準</span><br>
+        1 公斤 (kg) ＝ 2.2046 磅 (lb) ＝ 2 斤（中國市斤）＝ 1.6667 台斤 ＝ 35.274 盎司 (oz) ＝ 26.667 台兩<br>
+        1 磅 ＝ 453.592g　／　1 中國市斤 ＝ 500g　／　1 台斤 ＝ 600g　／　1 oz ＝ 28.3495g　／　1 台兩 ＝ 37.5g
+      </div>
+      <div class="grid grid-2">
+        <div class="field"><label>公斤 (kg)</label><input type="number" id="wt_kg" placeholder="0" step="0.001"></div>
+        <div class="field"><label>磅 (lb / pound)</label><input type="number" id="wt_lb" placeholder="0" step="0.001"></div>
+        <div class="field"><label>中國市斤 (斤，1斤=500g)</label><input type="number" id="wt_jin" placeholder="0" step="0.001"></div>
+        <div class="field"><label>台斤 (台斤，1台斤=600g)</label><input type="number" id="wt_tael" placeholder="0" step="0.001"></div>
+        <div class="field"><label>公克 (g)</label><input type="number" id="wt_g" placeholder="0" step="1"></div>
+        <div class="field"><label>公噸 (MT / metric ton)</label><input type="number" id="wt_mt" placeholder="0" step="0.000001"></div>
+        <div class="field"><label>盎司 (oz / ounce，1 oz = 28.3495g)</label><input type="number" id="wt_oz" placeholder="0" step="0.001"></div>
+        <div class="field"><label>台兩 (兩，1 台兩 = 37.5g)</label><input type="number" id="wt_liang" placeholder="0" step="0.001"></div>
+      </div>
+      <p class="note-line">任一欄位輸入後，其餘自動換算。台斤以 600g = 1 台斤、台兩以 37.5g = 1 兩（台錢制）計算。</p>
+    </div>`;
+}
+function wireWeightPanel(){
+  const CONV = { kg:1, lb:1/0.453592, jin:2, tael:1/0.6, g:1000, mt:0.001, oz:1/0.0283495, liang:1/0.0375 };
+  const fields = ["kg","lb","jin","tael","g","mt","oz","liang"];
+  function calcFrom(srcId){
+    const val = parseFloat($("#wt_"+srcId).value);
+    if(isNaN(val)){ fields.filter(f=>f!==srcId).forEach(f=>$("#wt_"+f).value=""); return; }
+    const kg = val / CONV[srcId];
+    fields.filter(f=>f!==srcId).forEach(f=>{
+      const v = kg * CONV[f];
+      $("#wt_"+f).value = v < 0.001 ? v.toFixed(8).replace(/\.?0+$/,"") : parseFloat(v.toFixed(6));
+    });
+  }
+  fields.forEach(id=>$("#wt_"+id).addEventListener("input",()=>calcFrom(id)));
+}
+
+/* =========================================================
+   9. 裝櫃計算器
+   ========================================================= */
+function containerPanelHTML(){
+  return `
+    <div class="panel-head"><h2>裝櫃計算器</h2><p>散裝自動嘗試6種旋轉方向取最佳值；棧板裝依棧板尺寸計算層數與總板數。</p></div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>貨櫃規格設定</div>
+      <div class="formula-tag"><span class="fname">標準內徑尺寸</span><br>
+        20呎：長 550 cm × 寬 229 cm × 高 226 cm（有效高留 10–15 cm）<br>
+        40呎：長 1155 cm × 寬 229 cm × 高 227 cm（有效高留 10–15 cm）
+      </div>
+      <div class="grid grid-3">
+        <div class="field"><label>貨櫃類型</label>
+          <select id="ct_type">
+            <option value="20">20 呎櫃（550×229×226 cm）</option>
+            <option value="40">40 呎櫃（1155×229×227 cm）</option>
+            <option value="custom">自訂尺寸</option>
+          </select>
+        </div>
+        <div class="field"><label>頂部預留高度（cm）</label>
+          <select id="ct_headroom">
+            <option value="10">10 cm（最小）</option>
+            <option value="12" selected>12 cm（建議）</option>
+            <option value="15">15 cm（保守）</option>
+          </select>
+        </div>
+        <div class="field"><label>裝載方式</label>
+          <select id="ct_mode">
+            <option value="loose">散裝（整箱）</option>
+            <option value="pallet">棧板裝</option>
+          </select>
+        </div>
+      </div>
+      <div id="ct_custom_dims" style="display:none;margin-top:12px;">
+        <div class="grid grid-3">
+          <div class="field"><label>櫃內長（cm）</label><input type="number" id="ct_cL" placeholder="550"></div>
+          <div class="field"><label>櫃內寬（cm）</label><input type="number" id="ct_cW" placeholder="229"></div>
+          <div class="field"><label>櫃內高（cm）</label><input type="number" id="ct_cH" placeholder="226"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="ct_loose_card">
+      <div class="card-title"><span class="dot"></span>散裝：單箱尺寸</div>
+      <div class="formula-tag"><span class="fname">公式</span><br>
+        箱子保持正放（高度固定），自動比較2種擺法取最佳值：<br>
+        方向A：L×W×H → floor(櫃長÷箱長) × floor(櫃寬÷箱寬) × floor(有效高÷箱高)<br>
+        方向B：W×L×H → floor(櫃長÷箱寬) × floor(櫃寬÷箱長) × floor(有效高÷箱高)
+      </div>
+      <div class="grid grid-3">
+        <div class="field"><label>箱長（cm）</label><input type="number" id="ct_bL" placeholder="例如 60" step="0.1"></div>
+        <div class="field"><label>箱寬（cm）</label><input type="number" id="ct_bW" placeholder="例如 40" step="0.1"></div>
+        <div class="field"><label>箱高（cm）</label><input type="number" id="ct_bH" placeholder="例如 30" step="0.1"></div>
+      </div>
+      <div class="result-box" style="margin-top:14px;" id="ct_loose_result">
+        <div class="result-row"><span class="rlabel">有效高度（扣除頂部預留）</span><span class="rvalue muted" id="ct_eff_h">—</span></div>
+        <div class="result-row"><span class="rlabel">採用擺放方向（箱長×箱寬×箱高，正放）</span><span class="rvalue muted" id="ct_best_orient">—</span></div>
+        <div class="result-row"><span class="rlabel">櫃長向 × 櫃寬向 × 高向排列</span><span class="rvalue muted" id="ct_breakdown">—</span></div>
+        <div class="result-row"><span class="rlabel">可裝總箱數</span><span class="rvalue big" id="ct_total_boxes">—</span></div>
+      </div>
+      <div id="ct_overheight_warn" style="display:none;margin-top:10px;background:#FFF3F1;border:1px solid #FFCFC8;border-radius:8px;padding:10px 14px;font-size:0.82rem;color:var(--coral-dark);">
+        ⚠️ 箱高超過有效高度，<b>所有旋轉方向均無法裝載</b>，請調整箱子高度或更換貨櫃類型。
+      </div>
+    </div>
+
+    <div class="card" id="ct_pallet_card" style="display:none;">
+      <div class="card-title"><span class="dot"></span>棧板裝：棧板＋貨物尺寸</div>
+      <div class="formula-tag"><span class="fname">公式</span><br>
+        每排棧板數 ＝ floor(櫃長÷棧板長) × floor(櫃寬÷棧板寬)<br>
+        棧板層數 ＝ floor(有效高÷棧板總高)　（棧板總高＝棧板高＋貨物堆疊高）<br>
+        總棧板數 ＝ 每排棧板數 × 棧板層數
+      </div>
+      <div class="grid grid-2">
+        <div class="field"><label>棧板長（cm）</label><input type="number" id="ct_pL" placeholder="例如 120" step="0.1"></div>
+        <div class="field"><label>棧板寬（cm）</label><input type="number" id="ct_pW" placeholder="例如 100" step="0.1"></div>
+        <div class="field"><label>棧板本身高度（cm）</label><input type="number" id="ct_pH" placeholder="例如 15" step="0.1"></div>
+        <div class="field"><label>棧板上貨物堆疊高（cm）</label><input type="number" id="ct_cargoH" placeholder="例如 120" step="0.1"></div>
+      </div>
+      <div class="result-box" style="margin-top:14px;">
+        <div class="result-row"><span class="rlabel">有效高度</span><span class="rvalue muted" id="ct_peff_h">—</span></div>
+        <div class="result-row"><span class="rlabel">棧板總高（板+貨）</span><span class="rvalue muted" id="ct_pallet_total_h">—</span></div>
+        <div class="result-row"><span class="rlabel">地面每排棧板數</span><span class="rvalue muted" id="ct_pallet_floor">—</span></div>
+        <div class="result-row"><span class="rlabel">可堆疊層數</span><span class="rvalue muted" id="ct_pallet_layers">—</span></div>
+        <div class="result-row"><span class="rlabel">可裝總棧板數</span><span class="rvalue big" id="ct_total_pallets">—</span></div>
+      </div>
+      <div id="ct_pallet_warn" style="display:none;margin-top:10px;background:#FFF3F1;border:1px solid #FFCFC8;border-radius:8px;padding:10px 14px;font-size:0.82rem;color:var(--coral-dark);">
+        ⚠️ 棧板總高超過有效高度，<b>無法裝載</b>，請調整棧板高度或貨物堆疊高。
+      </div>
+    </div>`;
+}
+
+function wireContainerPanel(){
+  const CONTAINER = {
+    "20":{L:550,W:229,H:226},
+    "40":{L:1155,W:229,H:227},
+  };
+
+  function getDims(){
+    const type=$("#ct_type").value, hr=parseInt($("#ct_headroom").value);
+    let L,W,H;
+    if(type==="custom"){
+      L=parseFloat($("#ct_cL").value)||0; W=parseFloat($("#ct_cW").value)||0; H=parseFloat($("#ct_cH").value)||0;
+    }else{ ({L,W,H}=CONTAINER[type]); }
+    return {L,W,H, effH: H-hr, hr};
+  }
+
+  function calcLoose(){
+    const {L,W,effH,hr}=getDims();
+    const bL=parseFloat($("#ct_bL").value), bW=parseFloat($("#ct_bW").value), bH=parseFloat($("#ct_bH").value);
+    $("#ct_eff_h").textContent=`${effH} cm（高${getDims().H} cm − 預留${hr} cm）`;
+
+    if(isNaN(bL)||isNaN(bW)||isNaN(bH)||bL<=0||bW<=0||bH<=0){
+      ["ct_best_orient","ct_breakdown","ct_total_boxes"].forEach(id=>$(("#"+id)).textContent="—");
+      document.getElementById("ct_overheight_warn").style.display="none"; return;
+    }
+    // 箱子保持正放：只允許 L↔W 對調，H 固定不參與旋轉
+    const orientations=[
+      [bL,bW,bH],  // 方向A：原始（箱長沿櫃長，箱寬沿櫃寬）
+      [bW,bL,bH],  // 方向B：L與W對調（箱寬沿櫃長，箱長沿櫃寬）
+    ];
+    let best=0, bestO=null, bestBreak=null, bestLabel="";
+    let anyFits=false;
+    orientations.forEach(([l,w,h],idx)=>{
+      if(h>effH) return;
+      anyFits=true;
+      const nL=Math.floor(L/l), nW=Math.floor(W/w), nH=Math.floor(effH/h);
+      const cnt=nL*nW*nH;
+      if(cnt>best){ best=cnt; bestO=[l,w,h]; bestBreak=[nL,nW,nH]; bestLabel=idx===0?"方向A（原始：L×W）":"方向B（對調：W×L）"; }
+    });
+    if(!anyFits){
+      document.getElementById("ct_overheight_warn").style.display="block";
+      ["ct_best_orient","ct_breakdown","ct_total_boxes"].forEach(id=>$("#"+id).textContent="無法裝載");
       return;
     }
-    const ice = gross-net;
-    const ratio = ice/gross;
-    $("#ice_f_icevalue").textContent = fmt(ice);
-    $("#ice_f_result").textContent = fmt(ratio*100)+" %";
+    document.getElementById("ct_overheight_warn").style.display="none";
+    $("#ct_best_orient").textContent=`${bestLabel}　${bestO[0]} × ${bestO[1]} × ${bestO[2]} cm`;
+    $("#ct_breakdown").textContent=`${bestBreak[0]} × ${bestBreak[1]} × ${bestBreak[2]} ＝ ${best} 箱`;
+    $("#ct_total_boxes").textContent=fmt(best,0)+" 箱";
   }
-  [fg,fn].forEach(el=>el.addEventListener("input",calcF));
+
+  function calcPallet(){
+    const {L,W,effH,hr}=getDims();
+    const pH=parseFloat($("#ct_pH").value)||0, cargoH=parseFloat($("#ct_cargoH").value)||0;
+    const pL=parseFloat($("#ct_pL").value), pW=parseFloat($("#ct_pW").value);
+    const totalPH=pH+cargoH;
+    const effHv=effH;
+    $("#ct_peff_h").textContent=`${effHv} cm`;
+    $("#ct_pallet_total_h").textContent=isNaN(totalPH)||totalPH===0?"—":`${totalPH} cm（板 ${pH}+貨 ${cargoH}）`;
+    if(isNaN(pL)||isNaN(pW)||totalPH===0){
+      ["ct_pallet_floor","ct_pallet_layers","ct_total_pallets"].forEach(id=>$("#"+id).textContent="—");
+      document.getElementById("ct_pallet_warn").style.display="none"; return;
+    }
+    if(totalPH>effHv){
+      document.getElementById("ct_pallet_warn").style.display="block";
+      ["ct_pallet_floor","ct_pallet_layers","ct_total_pallets"].forEach(id=>$("#"+id).textContent="無法裝載"); return;
+    }
+    document.getElementById("ct_pallet_warn").style.display="none";
+    const floor=Math.floor(L/pL)*Math.floor(W/pW);
+    const layers=Math.floor(effHv/totalPH);
+    const total=floor*layers;
+    $("#ct_pallet_floor").textContent=`${Math.floor(L/pL)} × ${Math.floor(W/pW)} ＝ ${floor} 板`;
+    $("#ct_pallet_layers").textContent=`${layers} 層`;
+    $("#ct_total_pallets").textContent=fmt(total,0)+" 板";
+  }
+
+  function runCalc(){
+    const mode=$("#ct_mode").value;
+    document.getElementById("ct_loose_card").style.display=mode==="loose"?"block":"none";
+    document.getElementById("ct_pallet_card").style.display=mode==="pallet"?"block":"none";
+    if(mode==="loose") calcLoose(); else calcPallet();
+  }
+
+  $("#ct_type").addEventListener("change",()=>{
+    document.getElementById("ct_custom_dims").style.display=$("#ct_type").value==="custom"?"block":"none";
+    runCalc();
+  });
+  $("#ct_headroom").addEventListener("change",runCalc);
+  $("#ct_mode").addEventListener("change",runCalc);
+  ["ct_cL","ct_cW","ct_cH","ct_bL","ct_bW","ct_bH","ct_pL","ct_pW","ct_pH","ct_cargoH"].forEach(id=>$(("#"+id)).addEventListener("input",runCalc));
+  runCalc();
+}
+
+/* =========================================================
+   10. 賣價反推USD採購成本
+   公式：USD = 售價×(1-毛利率) ÷ (1.01×1.0045×(1+關稅率)×匯率×1.05)
+   1.01=內陸雜費, 1.0045=港務稅捐, 1.05=營業稅
+   ========================================================= */
+function reversePanelHTML(){
+  return `
+    <div class="panel-head"><h2>賣價反推 USD 採購成本</h2><p>已知台幣售價與目標毛利率，反推最高可接受的美金採購成本。</p></div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>反推 USD 採購成本</div>
+      <div class="formula-tag"><span class="fname">公式</span><br>
+        USD成本 ＝ 售價 × (1－毛利率) ÷ (1.01 × 1.0045 × (1＋關稅率) × 匯率 × 1.05)<br>
+        <span style="color:#8AA0A4">1.01＝內陸雜費、1.0045＝港務稅捐、1.05＝營業稅</span>
+      </div>
+      <div class="grid grid-2">
+        <div class="field"><label>台幣售價</label><input type="number" id="rv_sell" placeholder="例如 1300" step="0.01"></div>
+        <div class="field"><label>目標毛利率（%）</label><input type="number" id="rv_margin" placeholder="例如 20" step="0.1"></div>
+        <div class="field"><label>匯率（USD → TWD）</label><input type="number" id="rv_fx" placeholder="例如 31.5" step="0.0001"><span class="hint">可切換至匯率換算器查詢即時匯率</span></div>
+        <div class="field"><label><br>關稅率</label>
+          <div class="radio-row">
+            <label class="radio-chip" id="rv_t15_wrap"><input type="radio" name="rv_tariff" id="rv_t15" value="0.15" checked>15%</label>
+            <label class="radio-chip" id="rv_t20_wrap"><input type="radio" name="rv_tariff" id="rv_t20" value="0.20">20%</label>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:8px;"><button class="ghost-btn" id="rv_use_fx">套用即時匯率</button></div>
+      <div class="result-box" style="margin-top:16px;">
+        <div class="result-row"><span class="rlabel">台幣目標成本（售價×(1−毛利率)）</span><span class="rvalue muted" id="rv_twd_cost">—</span></div>
+        <div class="result-row"><span class="rlabel">除數（1.01×1.0045×(1+關稅)×匯率×1.05）</span><span class="rvalue muted" id="rv_divisor">—</span></div>
+        <div class="result-row"><span class="rlabel">最高可接受 USD 採購成本</span><span class="rvalue big" id="rv_usd">—</span></div>
+      </div>
+      <p class="note-line">注意：此公式未含採購成本公式中的「+3元固定費用」，為簡化計算的估算版本，適合快速評估報價合理性。若需精確計算請使用第05項「採購成本＋毛利」計算器正向核對。</p>
+    </div>`;
+}
+function wireReversePanel(){
+  function updateChips(){
+    document.getElementById("rv_t15_wrap").classList.toggle("checked",document.getElementById("rv_t15").checked);
+    document.getElementById("rv_t20_wrap").classList.toggle("checked",document.getElementById("rv_t20").checked);
+  }
+  $all('input[name="rv_tariff"]').forEach(r=>r.addEventListener("change",()=>{updateChips();calc();}));
+  updateChips();
+  function calc(){
+    const sell=parseFloat($("#rv_sell").value), margin=parseFloat($("#rv_margin").value);
+    const fx=parseFloat($("#rv_fx").value);
+    const tariff=parseFloat(document.querySelector('input[name="rv_tariff"]:checked').value);
+    if(isNaN(sell)||isNaN(margin)||isNaN(fx)){
+      $("#rv_twd_cost").textContent="—"; $("#rv_divisor").textContent="—"; $("#rv_usd").textContent="—"; return;
+    }
+    const twdCost=sell*(1-margin/100);
+    const divisor=1.01*1.0045*(1+tariff)*fx*1.05;
+    const usd=twdCost/divisor;
+    $("#rv_twd_cost").textContent=fmt(twdCost)+" 元";
+    $("#rv_divisor").textContent=fmtFull(divisor,4);
+    $("#rv_usd").textContent=fmtFull(usd,4)+" USD";
+  }
+  ["#rv_sell","#rv_margin","#rv_fx"].forEach(s=>$(s).addEventListener("input",calc));
+  $("#rv_use_fx").addEventListener("click",()=>{
+    if(state.fxRates?.rates?.TWD){ $("#rv_fx").value=fmtFull(state.fxRates.rates.TWD,4); calc(); }
+    else alert("即時匯率尚未載入，請切至匯率換算器分頁重新抓取。");
+  });
 }
 
 /* =========================================================
@@ -1424,9 +1442,12 @@ function init(){
   wireSpecPanel();
   wireCostPanel();
   wireIcePanel();
+  wireTurnoverPanel();
+  wireWeightPanel();
+  wireContainerPanel();
+  wireReversePanel();
   fetchFxRates();
 }
-
 document.addEventListener("DOMContentLoaded", init);
 
 </script>
